@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events; // Important for UnityEvent!
 using UnityEngine.InputSystem;
 using UnityEngine.Splines;
 
@@ -7,31 +8,31 @@ public class MultiSplineDrawer : MonoBehaviour
 {
     public GameObject targetSpline;
     public float streetHeight = 0f;
-    [Header("Adds point if distance is far enough from last point")]
+    public float roadWidth = 4f;
+    [Header("Add point if distance is far enough from last point")]
     [SerializeField] private float minDistance = 1f;
 
-    [Header("Tools which executes after mouse leave")]
+    [Header("Link Splines Tool")]
     [SerializeField] private SplineLinkTool linkTool;
 
+    [Header("Events on Mouse Up (Only First Time)")]
+    public UnityEvent onMouseUpEventOnlyFirstTime;
 
-    // Main container (only ONE in the scene)
+    [Header("Events on Mouse Up")]
+    public UnityEvent onMouseUpEvent;
+
+    private bool hasExecutedFirstTime = false;
+
     private SplineContainer splineContainer;
-
-    // Currently active spline (stroke)
     private Spline activeSpline;
-
-    // Points of current stroke
     private List<Vector3> currentPoints = new List<Vector3>();
-
-    // Input
     private InputAction holdAction;
     private bool isHolding;
 
+
+
     private void Awake()
     {
-        // Create ONE container
-        // GameObject obj = new GameObject("Spline Container");
-
         splineContainer = targetSpline.GetComponent<SplineContainer>();
 
         holdAction = new InputAction(type: InputActionType.Button, binding: "<Mouse>/leftButton");
@@ -47,12 +48,25 @@ public class MultiSplineDrawer : MonoBehaviour
             isHolding = false;
             currentPoints.Clear();
 
-            // prüft das andere Script die Abstände und verbindet sie.
+            // 1. Start with the internal tools (LinkTool)
             if (linkTool != null)
             {
                 linkTool.ConnectAllInternalSplines();
             }
 
+            // 3. Execute all functions in the list on mouse up First Time
+            if (!hasExecutedFirstTime)
+            {
+                onMouseUpEventOnlyFirstTime.Invoke();
+
+                hasExecutedFirstTime = true; // Flip the switch so it never happens again
+            }
+
+            // 3. Execute all functions in the list on mouse up
+            if (onMouseUpEvent != null)
+            {
+                onMouseUpEvent.Invoke();
+            }
         };
     }
 
@@ -69,7 +83,7 @@ public class MultiSplineDrawer : MonoBehaviour
         {
             Vector3 worldPos = hit.point;
             worldPos.y = streetHeight;
-            // Only add point if far enough from last one
+            // Only adds point if far enough from last one
             if (currentPoints.Count == 0 ||
                 Vector3.Distance(currentPoints[^1], worldPos) > minDistance)
             {
@@ -79,20 +93,15 @@ public class MultiSplineDrawer : MonoBehaviour
         }
     }
 
-    // Create a new spline INSIDE the same container
     private void StartNewSpline()
     {
         activeSpline = new Spline();
-
-        // Add spline to container (multiple splines allowed)
         splineContainer.AddSpline(activeSpline);
     }
 
-    // Rebuild only the active spline
     private void UpdateSpline()
     {
         if (activeSpline == null) return;
-
         activeSpline.Clear();
 
         foreach (Vector3 worldPos in currentPoints)

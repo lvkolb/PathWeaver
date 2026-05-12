@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.Splines;
 using Unity.Mathematics;
 using System.Collections.Generic;
@@ -15,93 +15,165 @@ public class CarAgent : MonoBehaviour
     public float baseSpeed = 5f;
     public float currentSpeed;
 
+    [Header("Two-Way Lane Settings")]
+    [Tooltip("How far left/right of the spline centerline to drive. " +
+             "Positive = right lane (towards work), negative = left lane (towards home). " +
+             "Set to 0 to disable lane offset.")]
+    public float laneOffset = 0.4f;
+
     [Header("References")]
-    public TrafficNetwork network;          // assign in Inspector
-    public SplineContainer splineContainer; // same one TrafficNetwork uses
+    public TrafficNetwork network;
+    public SplineContainer splineContainer; // SOURCE centerline container
 
     // Path state
     private List<TrafficNode> currentPath = new List<TrafficNode>();
     private TrafficNode currentTarget;
 
-    // Spline-smooth movement between two nodes
+    // Spline-smooth movement
     private int activeSplineIndex = -1;
-    private float travelT = 0f;        // 0..1 along current segment
-    private float tStart, tEnd;        // t values of from/to node on their spline
+    private float travelT = 0f;
+    private float tStart, tEnd;
     private bool useSplineMovement = false;
+    private bool travellingForward = true;
+
+    // Direct/projected movement
+    private TrafficNode directFrom;
 
     private bool isWaiting = false;
-    public float stopDuration = 5f; // Seconds to wait
+    public float stopDuration = 5f;
+
+    // FIX: cache nodesPerSpline so SetupSegment never calls FindObjectOfType every frame
+    private int cachedNodesPerSpline = 12;
 
     public void InitializeAgent()
     {
+        // Cache network reference and nodesPerSpline ONCE at init
+        if (network == null) network = FindObjectOfType<TrafficNetwork>();
+        if (network != null) cachedNodesPerSpline = network.nodesPerSpline;
+
         if (homeNode != null)
         {
-            transform.position = homeNode.transform.position;
+            transform.position = GetLanePosition(homeNode.transform.position, Vector3.forward);
             RecalculatePath();
-            Debug.Log($"{gameObject.name} initialized at {homeNode.name}");
         }
-        else
-        {
-            Debug.LogError($"{gameObject.name} has no homeNode assigned!");
-        }
+        else Debug.LogError($"{gameObject.name} has no homeNode assigned!");
     }
 
     void Update()
     {
         if (isWaiting || currentTarget == null) return;
-        if (currentTarget == null) return;
         currentSpeed = baseSpeed / (1f + currentTarget.congestionPenalty);
-        if (currentSpeed <= 0.1f)
-        {
-            Debug.Log($"{gameObject.name} is stuck! Speed is {currentSpeed}. Base Speed is {baseSpeed}.");
-        }
-        if (useSplineMovement)
-            MoveAlongSplineSegment();
-        else
-            MoveDirectly(); // fallback if nodes are on different splines
+
+        if (useSplineMovement) MoveAlongSplineSegment();
+        else MoveDirectly();
     }
 
-    // Smooth movement along the spline between two nodes
+    // ── Lane offset helper ────────────────────────────────────────────────────
+    /// <summary>
+    /// Returns a position offset perpendicular to the travel direction by laneOffset.
+    /// headingToWork = right side, headingToHome = left side (two-way road).
+    /// </summary>
+    private Vector3 GetLanePosition(Vector3 centerPos, Vector3 forwardDir)
+    {
+        if (laneOffset == 0f) return centerPos;
+        Vector3 right = Vector3.Cross(Vector3.up, forwardDir).normalized;
+        // headingToWork drives on the right, returning drives on the left
+        float side = headingToWork ? laneOffset : -laneOffset;
+        return centerPos + right * side;
+    }
+
+    // ── Smooth spline movement ────────────────────────────────────────────────
     private void MoveAlongSplineSegment()
     {
-        if (splineContainer == null || activeSplineIndex < 0) { useSplineMovement = false; return; }
+        if (splineContainer == null || activeSplineIndex < 0 ||
+            activeSplineIndex >= splineContainer.Splines.Count)
+        { useSplineMovement = false; return; }
 
-        float segmentLength = Mathf.Abs(tEnd - tStart) * splineContainer.Splines[activeSplineIndex].GetLength();
+        float fullLength = splineContainer.Splines[activeSplineIndex].GetLength();
+        float segmentLength = Mathf.Abs(tEnd - tStart) * fullLength;
         if (segmentLength < 0.01f) { AdvancePath(); return; }
 
         travelT += (currentSpeed * Time.deltaTime) / segmentLength;
+        travelT = Mathf.Clamp01(travelT);
 
-        float worldT = Mathf.Lerp(tStart, tEnd, Mathf.Clamp01(travelT));
+        float worldT = Mathf.Lerp(tStart, tEnd, travelT);
         float3 pos, fwd, up;
         splineContainer.Evaluate(activeSplineIndex, worldT, out pos, out fwd, out up);
 
-        transform.position = (Vector3)pos;
+        if (!travellingForward) fwd = -fwd;
+
+        Vector3 centerPos = (Vector3)pos;
+        Vector3 fwdV = (Vector3)fwd;
+
+        transform.position = GetLanePosition(centerPos, fwdV);
+
         if (math.lengthsq(fwd) > 0.001f)
-            transform.rotation = Quaternion.LookRotation(fwd, up);
+            transform.rotation = Quaternion.LookRotation(fwdV, (Vector3)up);
 
         if (travelT >= 1f) AdvancePath();
     }
 
-    // Fallback: straight-line to node (cross-spline hops)
+    // ── Direct movement with spline projection for same-spline hops ──────────
     private void MoveDirectly()
     {
-        Vector3 targetPos = currentTarget.transform.position;
-        // Force the car to move TOWARD the node, not just "forward"
+        // If both nodes are on the same spline, follow the curve even for non-adjacent hops
+        if (directFrom != null
+            && directFrom.splineIndex == currentTarget.splineIndex
+            && directFrom.splineIndex != -1
+            && splineContainer != null
+            && directFrom.splineIndex < splineContainer.Splines.Count)
+        {
+            MoveDirectlyAlongSpline();
+            return;
+        }
+
+        // True cross-spline hop: straight line
+        Vector3 targetPos = GetLanePosition(currentTarget.transform.position,
+                                            (currentTarget.transform.position - transform.position).normalized);
         transform.position = Vector3.MoveTowards(transform.position, targetPos, currentSpeed * Time.deltaTime);
 
-        // Rotation
         Vector3 dir = targetPos - transform.position;
-        if (dir != Vector3.zero)
-        {
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), Time.deltaTime * 10f);
-        }
+        if (dir.sqrMagnitude > 0.001f)
+            transform.rotation = Quaternion.Slerp(transform.rotation,
+                Quaternion.LookRotation(dir), Time.deltaTime * 10f);
 
-        if (Vector3.Distance(transform.position, targetPos) < 0.5f)
-        {
-            AdvancePath();
-        }
+        if (Vector3.Distance(transform.position, targetPos) < 0.15f) AdvancePath();
     }
 
+    private void MoveDirectlyAlongSpline()
+    {
+        int si = directFrom.splineIndex;
+        float tFrom = directFrom.tValue;
+        float tTo = currentTarget.tValue;
+        bool fwd = (tTo >= tFrom);
+
+        float3 localPos = splineContainer.transform.InverseTransformPoint(transform.position);
+        SplineUtility.GetNearestPoint(splineContainer.Splines[si],
+                                      localPos, out _, out float currentT);
+
+        float fullLength = splineContainer.Splines[si].GetLength();
+        float remainingLen = Mathf.Abs(tTo - currentT) * fullLength;
+        if (remainingLen < 0.01f) { AdvancePath(); return; }
+
+        float step = (currentSpeed * Time.deltaTime) / fullLength;
+        float nextT = fwd ? Mathf.Min(currentT + step, tTo)
+                          : Mathf.Max(currentT - step, tTo);
+
+        float3 pos, forward, up;
+        splineContainer.Evaluate(si, nextT, out pos, out forward, out up);
+
+        if (!fwd) forward = -forward;
+        Vector3 fwdV = (Vector3)forward;
+
+        transform.position = GetLanePosition((Vector3)pos, fwdV);
+
+        if (math.lengthsq(forward) > 0.001f)
+            transform.rotation = Quaternion.LookRotation(fwdV, (Vector3)up);
+
+        if (Mathf.Abs(nextT - tTo) < 0.005f) AdvancePath();
+    }
+
+    // ── Path management ───────────────────────────────────────────────────────
     void AdvancePath()
     {
         if (currentPath.Count > 0)
@@ -113,49 +185,54 @@ public class CarAgent : MonoBehaviour
         }
         else
         {
-            // We reached the end! Start the waiting process.
-            if (!isWaiting)
-            {
-                StartCoroutine(WaitAtDestination());
-            }
+            if (!isWaiting) StartCoroutine(WaitAtDestination());
         }
     }
 
     private IEnumerator WaitAtDestination()
     {
         isWaiting = true;
-        currentTarget = null; // Stop movement logic in Update
-
-        Debug.Log($"{gameObject.name} arrived. Waiting for {stopDuration}s...");
+        currentTarget = null;
         yield return new WaitForSeconds(stopDuration);
-
-        // Flip destination
         headingToWork = !headingToWork;
         isWaiting = false;
-
         RecalculatePath();
     }
 
     void SetupSegment(TrafficNode from, TrafficNode to)
     {
         travelT = 0f;
-        // Only use spline movement if both nodes are on the same spline AND index is NOT -1
-        if (from.splineIndex == to.splineIndex && from.splineIndex != -1 && splineContainer != null)
+        directFrom = from;
+
+        bool sameSpline = from.splineIndex == to.splineIndex
+                       && from.splineIndex != -1
+                       && splineContainer != null
+                       && from.splineIndex < splineContainer.Splines.Count;
+
+        if (sameSpline)
         {
-            activeSplineIndex = from.splineIndex;
-            tStart = from.tValue;
-            tEnd = to.tValue;
-            useSplineMovement = true;
+            // FIX: use cachedNodesPerSpline — never call FindObjectOfType here
+            float maxAdjacentT = 2f / cachedNodesPerSpline;
+            float tDelta = Mathf.Abs(to.tValue - from.tValue);
+
+            if (tDelta <= maxAdjacentT)
+            {
+                activeSplineIndex = from.splineIndex;
+                tStart = from.tValue;
+                tEnd = to.tValue;
+                travellingForward = (tEnd >= tStart);
+                useSplineMovement = true;
+                return;
+            }
         }
-        else
-        {
-            useSplineMovement = false; // This forces MoveDirectly() for hand-drawn roads
-        }
+
+        useSplineMovement = false;
     }
 
     public void RecalculatePath()
     {
         if (network == null) network = FindObjectOfType<TrafficNetwork>();
+        if (network != null) cachedNodesPerSpline = network.nodesPerSpline;
 
         TrafficNode destination = headingToWork ? workNode : homeNode;
         TrafficNode start = currentTarget ?? homeNode;
@@ -163,66 +240,32 @@ public class CarAgent : MonoBehaviour
         if (start == null || destination == null) return;
         if (start == destination)
         {
+            if (network.allNodes.Count == 0) return;
             destination = network.allNodes[UnityEngine.Random.Range(0, network.allNodes.Count)];
             if (headingToWork) workNode = destination; else homeNode = destination;
         }
-        List<TrafficNode> newPath = FindPath(start, destination);
 
+        List<TrafficNode> newPath = FindPath(start, destination);
         if (newPath == null || newPath.Count == 0)
+        { Debug.LogWarning($"{gameObject.name}: no path from {start.name} to {destination.name}"); return; }
+
+        currentPath = newPath;
+        if (currentTarget == null)
         {
-            Debug.LogWarning($"{gameObject.name} could NOT find a path from {start.name} to {destination.name}!");
-        }
-        else
-        {
-            Debug.Log($"{gameObject.name} found a path with {newPath.Count} nodes.");
-        }
-        if (newPath != null && newPath.Count > 0)
-        {
-            currentPath = newPath;
-            if (currentTarget == null)
-            {
-                TrafficNode from = start;
-                currentTarget = currentPath[0];
-                currentPath.RemoveAt(0);
-                SetupSegment(from, currentTarget);
-            }
+            TrafficNode from = start;
+            currentTarget = currentPath[0];
+            currentPath.RemoveAt(0);
+            SetupSegment(from, currentTarget);
         }
     }
-    /*   public void RecalculatePath()
-    {
-        if (network == null) network = FindObjectOfType<TrafficNetwork>();
-
-        // The goal stays the same (Home or Work)
-        TrafficNode destination = headingToWork ? workNode : homeNode;
-
-        // IMPORTANT: The "Start" is the node we are currently heading to.
-        // If we are waiting or don't have a target, start from our current position/home.
-        TrafficNode start = currentTarget;
-
-        if (start == null || destination == null || start == destination) return;
-
-        List<TrafficNode> newPath = FindPath(start, destination);
-
-        if (newPath != null && newPath.Count > 0)
-        {
-            // Update the path list with the new shortcut
-            currentPath = newPath;
-            Debug.Log($"{gameObject.name} found a new shortcut!");
-        }
-    }*/
 
     List<TrafficNode> FindPath(TrafficNode start, TrafficNode end)
     {
-        if (network != null)
-        {
-            // Refresh local knowledge if necessary
-        }
         if (start == end) return new List<TrafficNode>();
 
         var cameFrom = new Dictionary<TrafficNode, TrafficNode>();
         var costSoFar = new Dictionary<TrafficNode, float>();
         var frontier = new List<TrafficNode>();
-
         frontier.Add(start);
         costSoFar[start] = 0f;
 
@@ -250,10 +293,7 @@ public class CarAgent : MonoBehaviour
         var path = new List<TrafficNode>();
         TrafficNode temp = end;
         while (temp != start && cameFrom.ContainsKey(temp))
-        {
-            path.Add(temp);
-            temp = cameFrom[temp];
-        }
+        { path.Add(temp); temp = cameFrom[temp]; }
         path.Reverse();
         return path;
     }
@@ -268,10 +308,7 @@ public class CarAgent : MonoBehaviour
             Gizmos.color = Color.yellow;
             Vector3 last = currentTarget.transform.position;
             foreach (var n in currentPath)
-            {
-                Gizmos.DrawLine(last, n.transform.position);
-                last = n.transform.position;
-            }
+            { Gizmos.DrawLine(last, n.transform.position); last = n.transform.position; }
         }
     }
 }

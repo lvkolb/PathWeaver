@@ -16,7 +16,7 @@ public class MultiSplineDrawer : MonoBehaviour
     [SerializeField] private float connectThreshold = 1.5f;
 
     [Header("Road Width Generation")]
-    [SerializeField] private float newSplineWidth = 0.2f;
+    public float splineWidth = 0.2f;
 
     [Header("Live Infrastructure Updates (Defaults)")]
     [SerializeField] private TrafficNetwork trafficNetwork;
@@ -183,7 +183,7 @@ public class MultiSplineDrawer : MonoBehaviour
                     try
                     {
                         object template = list[0];
-                        object clone = CloneAndSetDefault(template, newSplineWidth);
+                        object clone = CloneAndSetDefault(template, splineWidth);
                         if (clone != null) list.Add(clone);
                     }
                     catch (Exception e) { Debug.LogWarning($"Width Patch Error: {e.Message}"); }
@@ -199,7 +199,7 @@ public class MultiSplineDrawer : MonoBehaviour
 
             if (value is float)
             {
-                field.SetValue(comp, newSplineWidth);
+                field.SetValue(comp, splineWidth);
                 return;
             }
         }
@@ -218,7 +218,7 @@ public class MultiSplineDrawer : MonoBehaviour
             if (fi == null) continue;
             try
             {
-                fi.SetValue(splineDataObj, newSplineWidth);
+                fi.SetValue(splineDataObj, splineWidth);
                 if (idx >= 0 && owner != null)
                 {
                     FieldInfo listField = owner.GetType().GetField(fieldName, flags);

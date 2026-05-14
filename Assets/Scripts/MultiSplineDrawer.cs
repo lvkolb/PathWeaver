@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.Splines;
 using Unity.Mathematics;
+using UnityEngine.InputSystem;
 
 public class MultiSplineDrawer : MonoBehaviour
 {
@@ -13,20 +13,18 @@ public class MultiSplineDrawer : MonoBehaviour
 
     [Header("Drawing Constraints")]
     [SerializeField] private float minDistance = 1f;
-    [Tooltip("Maximum distance to automatically weld endpoints together.")]
     [SerializeField] private float connectThreshold = 1.5f;
 
     [Header("Road Width Generation")]
     [SerializeField] private float newSplineWidth = 0.2f;
 
-    [Header("Live Infrastructure Updates")]
+    [Header("Live Infrastructure Updates (Defaults)")]
     [SerializeField] private TrafficNetwork trafficNetwork;
     [SerializeField] private VehicleManager vehicleManager;
 
     private SplineContainer splineContainer;
     private Spline activeSpline;
     private List<Vector3> currentPoints = new List<Vector3>();
-    private InputAction holdAction;
     private bool isHolding;
     private Component[] widthComponents;
 
@@ -34,49 +32,36 @@ public class MultiSplineDrawer : MonoBehaviour
     {
         splineContainer = targetSpline.GetComponent<SplineContainer>();
         widthComponents = targetSpline.GetComponents<Component>();
-
-        // Set up input action for left mouse button holding
-        holdAction = new InputAction(type: InputActionType.Button, binding: "<Mouse>/leftButton");
-
-        holdAction.started += _ =>
-        {
-            isHolding = true;
-            StartNewSpline();
-        };
-
-        holdAction.canceled += _ =>
-        {
-            isHolding = false;
-            currentPoints.Clear();
-
-            // INTEGRATION: Merges intersecting vertices instantly instead of using a separate script
-            ConnectAllInternalSplines();
-
-            // Notify the infrastructure network to bake new nodes
-            if (trafficNetwork == null) trafficNetwork = FindAnyObjectByType<TrafficNetwork>();
-            if (trafficNetwork != null) trafficNetwork.RebuildGraph();
-
-            // Force all vehicles to find potential shortcuts on the new road
-            if (vehicleManager == null) vehicleManager = FindAnyObjectByType<VehicleManager>();
-            if (vehicleManager != null) vehicleManager.RecalculateAllVehiclePaths();
-        };
     }
 
-    private void OnEnable() => holdAction.Enable();
-    private void OnDisable() => holdAction.Disable();
+    public void StartDrawing()
+    {
+        isHolding = true;
+        StartNewSpline();
+    }
+
+    public void StopDrawing()
+    {
+        isHolding = false;
+        currentPoints.Clear();
+
+        ConnectAllInternalSplines();
+
+        // Run defaults immediately when stopped
+        DefaultNetworkAndVehicleUpdates();
+    }
 
     private void Update()
     {
         if (!isHolding) return;
 
-        // Project mouse screen position onto the world space ground plane
+        // Uses the new Input System package to read the live vector position
         Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
         if (Physics.Raycast(ray, out RaycastHit hit))
         {
             Vector3 worldPos = hit.point;
             worldPos.y = streetHeight;
 
-            // Add point if it is the first one or exceeds the minimum distance threshold
             if (currentPoints.Count == 0 || Vector3.Distance(currentPoints[^1], worldPos) > minDistance)
             {
                 currentPoints.Add(worldPos);
@@ -84,13 +69,25 @@ public class MultiSplineDrawer : MonoBehaviour
             }
         }
     }
+    /// <summary>
+    /// This method holds the original hardcoded updating logic.
+    /// It is registered as a permanent listener to onMouseUpEvent inside Awake().
+    /// </summary>
+    private void DefaultNetworkAndVehicleUpdates()
+    {
+        // Notify the infrastructure network to bake new nodes
+        if (trafficNetwork == null) trafficNetwork = FindAnyObjectByType<TrafficNetwork>();
+        if (trafficNetwork != null) trafficNetwork.RebuildGraph();
+
+        // Force all vehicles to find potential shortcuts on the new road
+        if (vehicleManager == null) vehicleManager = FindAnyObjectByType<VehicleManager>();
+        if (vehicleManager != null) vehicleManager.RecalculateAllVehiclePaths();
+    }
 
     private void StartNewSpline()
     {
         activeSpline = new Spline();
         splineContainer.AddSpline(activeSpline);
-
-        // Patch the mesh modifier component widths for the new spline index
         PatchAllWidthComponents(splineContainer.Splines.Count - 1);
     }
 
@@ -99,7 +96,6 @@ public class MultiSplineDrawer : MonoBehaviour
         if (activeSpline == null) return;
         activeSpline.Clear();
 
-        // Convert world points to local spline container space
         foreach (Vector3 worldPos in currentPoints)
         {
             Vector3 localPos = splineContainer.transform.InverseTransformPoint(worldPos);
@@ -108,9 +104,6 @@ public class MultiSplineDrawer : MonoBehaviour
         RebuildAllRoadComponents();
     }
 
-    /// <summary>
-    /// Compares all spline endpoints and welds them together logically if within connectThreshold.
-    /// </summary>
     public void ConnectAllInternalSplines()
     {
         var splines = splineContainer.Splines;
@@ -135,7 +128,6 @@ public class MultiSplineDrawer : MonoBehaviour
             {
                 float3 posB = splineB[knotIdxB].Position;
 
-                // If endpoints are close enough, snap them to their shared midpoint
                 if (math.distance(posA, posB) <= connectThreshold)
                 {
                     float3 midPoint = (posA + posB) * 0.5f;
@@ -148,7 +140,6 @@ public class MultiSplineDrawer : MonoBehaviour
                     knotB.Position = midPoint;
                     splineB[knotIdxB] = knotB;
 
-                    // Link the knots logically within the native Unity Spline system
                     splineContainer.LinkKnots(new SplineKnotIndex(indexA, knotIdxA), new SplineKnotIndex(indexB, knotIdxB));
                 }
             }
@@ -181,7 +172,6 @@ public class MultiSplineDrawer : MonoBehaviour
             object value = field.GetValue(comp);
             if (value == null) continue;
 
-            // Handle List-based width configurations (one entry per spline)
             if (value is System.Collections.IList list)
             {
                 if (splineIndex < list.Count)
@@ -201,14 +191,12 @@ public class MultiSplineDrawer : MonoBehaviour
                 return;
             }
 
-            // Handle single SplineData configurations
             if (value.GetType().Name.StartsWith("SplineData"))
             {
                 SetSplineDataDefault(value, comp, fieldName, -1);
                 return;
             }
 
-            // Handle basic float properties directly
             if (value is float)
             {
                 field.SetValue(comp, newSplineWidth);
@@ -271,7 +259,6 @@ public class MultiSplineDrawer : MonoBehaviour
 
     private void RebuildAllRoadComponents()
     {
-        // Dynamically invoke the Rebuild method on modern road generation components (e.g., SplineExtrude)
         foreach (var comp in widthComponents)
         {
             if (comp == null) continue;

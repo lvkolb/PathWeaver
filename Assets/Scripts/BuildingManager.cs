@@ -96,6 +96,8 @@ public class BuildingManager : MonoBehaviour
 
     private void ValidateExistingBuildings()
     {
+        int startCount = spawnedBuildings.Count;
+
         for (int i = spawnedBuildings.Count - 1; i >= 0; i--)
         {
             GameObject building = spawnedBuildings[i];
@@ -113,6 +115,10 @@ public class BuildingManager : MonoBehaviour
                 spawnedBuildings.RemoveAt(i);
             }
         }
+
+        int removedCount = startCount - spawnedBuildings.Count;
+        Debug.Log($"<color=orange>Validation complete:</color> {removedCount} Buildings removed. " +
+                  $"<color=lime>Current total: {spawnedBuildings.Count}</color>");
     }
 
     private void SpawnObjects()
@@ -184,6 +190,8 @@ public class BuildingManager : MonoBehaviour
                 spawnedBuildings.Add(newBuilding);
             }
         }
+
+        Debug.Log($"<color=lime>Done!</color> Buildings have been created. Total number in the list: {spawnedBuildings.Count}");
     }
 
     private Transform GetNearestNode(Vector3 pos)

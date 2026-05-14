@@ -6,13 +6,11 @@ public class TrafficNode : MonoBehaviour
     public enum NodeType
     {
         Road,
-        Intersection,
-        StopLine
+        Intersection
     }
 
     [Header("Node Configuration")]
     public NodeType nodeType = NodeType.Road;
-    public int laneId = 0;
 
     [Header("Connections (One-Way)")]
     public List<TrafficNode> outgoing = new List<TrafficNode>();
@@ -22,13 +20,8 @@ public class TrafficNode : MonoBehaviour
     public int splineIndex = -1;
     public float tValue = 0f;
 
-    [Header("Dynamic Traffic State")]
-    public float congestionPenalty = 0f;
-    public bool isBlocked = false;
-    [HideInInspector] public int waitingCars = 0;
-
     /// <summary>
-    /// Connects this node to a target node, maintaining the one-way relationship.
+    /// Establishes a synchronized one-way connection to a target node.
     /// </summary>
     public void ConnectTo(TrafficNode target)
     {
@@ -41,6 +34,9 @@ public class TrafficNode : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Removes a connection and cleans up the target's incoming list.
+    /// </summary>
     public void DisconnectFrom(TrafficNode target)
     {
         if (target == null) return;
@@ -50,16 +46,12 @@ public class TrafficNode : MonoBehaviour
 
     private void OnDrawGizmos()
     {
-        switch (nodeType)
-        {
-            case NodeType.Intersection: Gizmos.color = Color.yellow; break;
-            case NodeType.StopLine: Gizmos.color = Color.red; break;
-            default: Gizmos.color = Color.cyan; break;
-        }
-
+        // Color coding for clear visualization in the Scene View
+        Gizmos.color = (nodeType == NodeType.Intersection) ? Color.yellow : Color.cyan;
         float radius = (nodeType == NodeType.Intersection) ? 0.3f : 0.15f;
         Gizmos.DrawSphere(transform.position, radius);
 
+        // Draw path connections with direction arrows
         Gizmos.color = Color.white;
         foreach (TrafficNode next in outgoing)
         {
@@ -68,7 +60,7 @@ public class TrafficNode : MonoBehaviour
             Vector3 to = next.transform.position;
             Gizmos.DrawLine(from, to);
 
-            // Draw direction arrow
+            // Draw a small arrowhead at 60% of the distance
             Vector3 mid = Vector3.Lerp(from, to, 0.6f);
             Vector3 dir = (to - from).normalized;
             if (dir != Vector3.zero)

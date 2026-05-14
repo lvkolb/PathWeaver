@@ -237,7 +237,6 @@ MonoBehaviour:
   snapRadius: 0.8
   intersectionSamples: 60
   allNodes: []
-  nodesPerSpline: 12
 --- !u!4 &308317493
 Transform:
   m_ObjectHideFlags: 0
@@ -679,7 +678,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!43 &1174830786
+--- !u!43 &921818699
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -1472,7 +1471,7 @@ MonoBehaviour:
       m_Value: 0.2
   m_Spline: {fileID: 1411242878}
   m_SegmentsPerMeter: 1
-  m_Mesh: {fileID: 1174830786}
+  m_Mesh: {fileID: 921818699}
   m_TextureScale: 1
 --- !u!33 &1411242881
 MeshFilter:
@@ -1481,7 +1480,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1411242877}
-  m_Mesh: {fileID: 1174830786}
+  m_Mesh: {fileID: 921818699}
 --- !u!23 &1411242882
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1541,7 +1540,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1753412012}
   - component: {fileID: 1753412011}
-  - component: {fileID: 1753412010}
   m_Layer: 0
   m_Name: SplineManager
   m_TagString: Untagged
@@ -1549,20 +1547,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1753412010
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1753412009}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3b80930a672d45e4c8a9b19df4a8fc54, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SplineLinkTool
-  container: {fileID: 1411242878}
-  connectThreshold: 2
 --- !u!114 &1753412011
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1578,8 +1562,8 @@ MonoBehaviour:
   targetSpline: {fileID: 1411242877}
   streetHeight: 0
   minDistance: 2
+  connectThreshold: 1.5
   newSplineWidth: 0.2
-  linkTool: {fileID: 1753412010}
   trafficNetwork: {fileID: 0}
   vehicleManager: {fileID: 0}
 --- !u!4 &1753412012

@@ -9,21 +9,21 @@ public class CarAgent : MonoBehaviour
     [Header("Settings")]
     public float baseSpeed = 10f;
     public float laneOffset = 0.6f;
-    public float stopDuration = 2f; // Pause at destination before turning back
+    public float stopDuration = 2f;
 
     [Header("References")]
     public TrafficNetwork network;
     public SplineContainer splineContainer;
 
     [Header("Navigation Goals")]
-    public TrafficNode homeNode; // Point A
-    public TrafficNode workNode; // Point B
+    public TrafficNode homeNode;
+    public TrafficNode workNode;
     private bool headingToWork = true;
 
     private List<TrafficNode> currentPath = new List<TrafficNode>();
     private TrafficNode currentTarget;
 
-    // Spline-Tracking
+    // Internal Spline State tracking
     private bool useSpline = false;
     private float travelT = 0f;
     private int splineIdx = -1;
@@ -35,7 +35,6 @@ public class CarAgent : MonoBehaviour
         homeNode = start;
         workNode = destination;
 
-        // Unity 6 compliant search
         if (network == null) network = Object.FindAnyObjectByType<TrafficNetwork>();
         if (splineContainer == null && network != null) splineContainer = network.splineContainer;
 
@@ -69,7 +68,7 @@ public class CarAgent : MonoBehaviour
         splineContainer.Evaluate(splineIdx, worldT, out float3 pos, out float3 fwd, out _);
 
         Vector3 forward = splineContainer.transform.TransformDirection((Vector3)fwd);
-        if (tEnd < tStart) forward = -forward;
+        if (tEnd < tStart) forward = -forward; // Invert direction vector if moving backwards (1 -> 0)
 
         ApplyPositionAndRotation(splineContainer.transform.TransformPoint((Vector3)pos), forward);
 
@@ -81,6 +80,7 @@ public class CarAgent : MonoBehaviour
         Vector3 dir = (currentTarget.transform.position - transform.position).normalized;
         Vector3 targetPos = currentTarget.transform.position;
 
+        // Apply lane offset during straight cross-spline adjustments
         transform.position = Vector3.MoveTowards(transform.position, targetPos + (Vector3.Cross(Vector3.up, dir) * laneOffset), baseSpeed * Time.deltaTime);
 
         if (dir.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(dir);
@@ -89,6 +89,7 @@ public class CarAgent : MonoBehaviour
 
     private void ApplyPositionAndRotation(Vector3 centerPos, Vector3 forward)
     {
+        // Cross product guarantees the car shifts right relative to its current movement direction
         Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
         transform.position = centerPos + (right * laneOffset);
         if (forward.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(forward);
@@ -102,6 +103,7 @@ public class CarAgent : MonoBehaviour
             currentTarget = currentPath[0];
             currentPath.RemoveAt(0);
 
+            // If next node shares the same spline, switch to curve-following mode
             if (from.splineIndex == currentTarget.splineIndex && from.splineIndex != -1)
             {
                 splineIdx = from.splineIndex;
@@ -121,11 +123,9 @@ public class CarAgent : MonoBehaviour
     private IEnumerator WaitAndReturn()
     {
         isWaiting = true;
-        Debug.Log($"<color=cyan>Ziel erreicht:</color> {gameObject.name} pausiert kurz.");
-
         yield return new WaitForSeconds(stopDuration);
 
-        // Loop Logic: Toggle direction and restart
+        // Turn around logic: flip state and find shortest path back
         headingToWork = !headingToWork;
         isWaiting = false;
         RecalculatePath();
@@ -147,6 +147,7 @@ public class CarAgent : MonoBehaviour
         var queue = new List<TrafficNode> { start };
         dist[start] = 0;
 
+        // Standard Dijkstra shortest path finder based on physical distance
         while (queue.Count > 0)
         {
             queue.Sort((a, b) => dist[a].CompareTo(dist[b]));
@@ -157,6 +158,7 @@ public class CarAgent : MonoBehaviour
 
             foreach (var next in curr.outgoing)
             {
+                if (next == null) continue;
                 float d = Vector3.Distance(curr.transform.position, next.transform.position);
                 if (!dist.ContainsKey(next) || dist[curr] + d < dist[next])
                 {

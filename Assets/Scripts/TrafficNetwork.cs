@@ -14,10 +14,9 @@ public class TrafficNetwork : MonoBehaviour
     public int intersectionSamples = 80;
 
     [HideInInspector] public List<TrafficNode> allNodes = new List<TrafficNode>();
-    [HideInInspector] public int nodesPerSpline = 12;
 
     /// <summary>
-    /// Clears the old graph and builds a new one based on spline geometry.
+    /// Wipes the existing network and generates a brand new path graph.
     /// </summary>
     public void RebuildGraph()
     {
@@ -25,23 +24,18 @@ public class TrafficNetwork : MonoBehaviour
             if (n != null) DestroyImmediate(n.gameObject);
 
         allNodes.Clear();
-
         if (splineContainer == null) return;
 
-        // Step 1: Place nodes along each spline
+        // Step 1: Bake nodes down the center of each spline path
         for (int i = 0; i < splineContainer.Splines.Count; i++)
             PlaceNodesOnSpline(i);
 
-        // Step 2: Detect physical crossings and create intersections
+        // Step 2: Scan for physical overlapping roads and create intersection nodes
         for (int a = 0; a < splineContainer.Splines.Count; a++)
             for (int b = a + 1; b < splineContainer.Splines.Count; b++)
                 InsertCrossingNodes(a, b);
 
-        // Step 3: Cache metadata for agents
-        if (allNodes.Count > 0)
-            nodesPerSpline = Mathf.Max(1, allNodes.FindAll(n => n.splineIndex == 0).Count);
-
-        Debug.Log($"Traffic Network: {allNodes.Count} nodes generated.");
+        Debug.Log($"Traffic Network Rebuilt: {allNodes.Count} nodes generated.");
     }
 
     private void PlaceNodesOnSpline(int splineIdx)
@@ -63,14 +57,9 @@ public class TrafficNetwork : MonoBehaviour
             if (node == null)
                 node = CreateNode($"Node_S{splineIdx}_{i}", worldPos, splineIdx, t);
 
-            // Inside PlaceNodesOnSpline(...)
             if (prev != null)
             {
-                // FORWARD Connection (0 -> 1)
-                prev.ConnectTo(node);
-
-                // BACKWARD Connection (1 -> 0)
-                // This allows cars to travel in the opposite direction on the same spline
+                prev.ConnectTo(node); // Two-way traffic setup
                 node.ConnectTo(prev);
             }
             prev = node;

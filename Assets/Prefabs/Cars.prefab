@@ -167,7 +167,7 @@ TrailRenderer:
   m_PreviewTimeScale: 1
   m_Parameters:
     serializedVersion: 3
-    widthMultiplier: 1
+    widthMultiplier: 0.5
     widthCurve:
       serializedVersion: 2
       m_Curve:
@@ -236,9 +236,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d07b14faa8d6704ab16f282a2fffd83, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CarAgent
-  homeNode: {fileID: 0}
-  workNode: {fileID: 0}
   baseSpeed: 5
-  currentSpeed: 0
+  laneOffset: 0.2
+  stopDuration: 2
   network: {fileID: 0}
   splineContainer: {fileID: 0}
+  homeNode: {fileID: 0}
+  workNode: {fileID: 0}

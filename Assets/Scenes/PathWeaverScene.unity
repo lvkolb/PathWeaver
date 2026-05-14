@@ -341,7 +341,7 @@ MonoBehaviour:
   - {fileID: 2576323522570767521, guid: 2545f7e91b7d76746ba93b51a9d6bf04, type: 3}
   - {fileID: 9208147289290781986, guid: 605004395702cd140b0f635614e7c716, type: 3}
   - {fileID: 6908556128635996724, guid: 5d0fa3733d8db974bb67aa4b26fa6e70, type: 3}
-  amount: 4
+  amount: 400
   splineManager: {fileID: 1753412009}
   roadSpline: {fileID: 1411242878}
   avoidanceLayers:
@@ -350,6 +350,7 @@ MonoBehaviour:
   extraSpacing: 0.5
   areaObject: {fileID: 743844033}
   rotationTargetsParent: {fileID: 308317491}
+  use90DegreeSnapping: 1
 --- !u!4 &214948287
 Transform:
   m_ObjectHideFlags: 0
@@ -1740,7 +1741,7 @@ MonoBehaviour:
       m_Value: 0.2
   m_Spline: {fileID: 1411242878}
   m_SegmentsPerMeter: 1
-  m_Mesh: {fileID: 1500287869}
+  m_Mesh: {fileID: 1518751662}
   m_TextureScale: 1
 --- !u!33 &1411242881
 MeshFilter:
@@ -1749,7 +1750,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1411242877}
-  m_Mesh: {fileID: 1500287869}
+  m_Mesh: {fileID: 1518751662}
 --- !u!23 &1411242882
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1799,7 +1800,7 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!43 &1500287869
+--- !u!43 &1518751662
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}

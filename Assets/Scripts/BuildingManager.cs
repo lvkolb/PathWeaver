@@ -23,6 +23,8 @@ public class BuildingManager : MonoBehaviour
 
     [Header("Rotation Reference")]
     public GameObject rotationTargetsParent;
+    [Tooltip("On: Houses rotate in 90° increments. Off: Houses face directly towards the next TrafficNode.")]
+    public bool use90DegreeSnapping = true;
     private List<GameObject> spawnedBuildings = new List<GameObject>();
 
     private float roadWidth = 0.5f;
@@ -154,45 +156,46 @@ public class BuildingManager : MonoBehaviour
                     // Check for collisions with other objects e.g. buildings (avoidanceLayers)
                     if (!Physics.CheckBox(testPos, finalExtents, Quaternion.identity, avoidanceLayers))
                     {
-                        // Calculates rotation
+                        // Dynamic rotation
                         if (rotationTargetsParent != null && rotationTargetsParent.transform.childCount > 0)
                         {
-                            Transform nearestTarget = null;
-                            float minDistance = float.MaxValue;
-
-                            foreach (Transform child in rotationTargetsParent.transform)
+                            Transform nearest = GetNearestNode(testPos);
+                            if (nearest != null)
                             {
-                                float dist = Vector3.Distance(testPos, child.position);
-                                if (dist < minDistance)
-                                {
-                                    minDistance = dist;
-                                    nearestTarget = child;
-                                }
-                            }
+                                Vector3 dir = (nearest.position - testPos).normalized;
+                                float angle = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
 
-                            if (nearestTarget != null)
-                            {
-                                Vector3 direction = (nearestTarget.position - testPos).normalized;
-                                float angle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
-                                // Snapping to 90 degree
-                                float snappedAngle = Mathf.Round(angle / 90f) * 90f;
-                                finalRot = Quaternion.Euler(0, snappedAngle, 0);
+                                // toggle
+                                float finalAngle = use90DegreeSnapping ? Mathf.Round(angle / 90f) * 90f : angle;
+
+                                finalRot = Quaternion.Euler(0, finalAngle, 0);
                             }
                         }
 
                         finalPos = testPos;
-                        finalPos.y = areaObject.position.y; // Back to ground level
+                        finalPos.y = areaObject.position.y;
                         validPosFound = true;
                     }
                 }
             }
-
             if (validPosFound)
             {
                 GameObject newBuilding = Instantiate(selectedPrefab, finalPos, finalRot, transform);
                 spawnedBuildings.Add(newBuilding);
             }
         }
+    }
+
+    private Transform GetNearestNode(Vector3 pos)
+    {
+        Transform nearest = null;
+        float minDist = float.MaxValue;
+        foreach (Transform child in rotationTargetsParent.transform)
+        {
+            float d = Vector3.Distance(pos, child.position);
+            if (d < minDist) { minDist = d; nearest = child; }
+        }
+        return nearest;
     }
 
     private bool IsPositionFarFromAllSplines(Vector3 worldPos, float requiredDist)

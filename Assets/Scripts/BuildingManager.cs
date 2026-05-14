@@ -21,6 +21,8 @@ public class BuildingManager : MonoBehaviour
     [Header("Area Reference")]
     public Transform areaObject;
 
+    [Header("Rotation Reference")]
+    public GameObject rotationTargetsParent;
     private List<GameObject> spawnedBuildings = new List<GameObject>();
 
     private float roadWidth = 0.5f;
@@ -115,10 +117,10 @@ public class BuildingManager : MonoBehaviour
     {
         if (roadSpline == null || areaObject == null) return;
 
+        // Calculating the area (the scale for a plane is often 10 units)
         float halfWidth = (areaObject.localScale.x * 10f) / 2f;
         float halfLength = (areaObject.localScale.z * 10f) / 2f;
 
-        // We only try to build as many new houses as are needed to reach the "amount"
         int buildingsToCreate = amount - spawnedBuildings.Count;
 
         for (int i = 0; i < buildingsToCreate; i++)
@@ -137,8 +139,7 @@ public class BuildingManager : MonoBehaviour
 
             bool validPosFound = false;
             Vector3 finalPos = Vector3.zero;
-            Quaternion finalRot = Quaternion.Euler(0, 0, 0);
-            // Quaternion finalRot = Quaternion.Euler(0, UnityEngine.Random.Range(0, 360), 0);
+            Quaternion finalRot = Quaternion.identity;
             int attempts = 0;
 
             while (!validPosFound && attempts < 50)
@@ -150,12 +151,38 @@ public class BuildingManager : MonoBehaviour
 
                 if (IsPositionFarFromAllSplines(testPos, roadWidth + houseSafetyRadius))
                 {
-                    // Important: Here we also check for collisions with existing houses!
-                    if (!Physics.CheckBox(testPos, finalExtents, finalRot, avoidanceLayers))
+                    // Check for collisions with other objects e.g. buildings (avoidanceLayers)
+                    if (!Physics.CheckBox(testPos, finalExtents, Quaternion.identity, avoidanceLayers))
                     {
-                        validPosFound = true;
+                        // Calculates rotation
+                        if (rotationTargetsParent != null && rotationTargetsParent.transform.childCount > 0)
+                        {
+                            Transform nearestTarget = null;
+                            float minDistance = float.MaxValue;
+
+                            foreach (Transform child in rotationTargetsParent.transform)
+                            {
+                                float dist = Vector3.Distance(testPos, child.position);
+                                if (dist < minDistance)
+                                {
+                                    minDistance = dist;
+                                    nearestTarget = child;
+                                }
+                            }
+
+                            if (nearestTarget != null)
+                            {
+                                Vector3 direction = (nearestTarget.position - testPos).normalized;
+                                float angle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+                                // Snapping to 90 degree
+                                float snappedAngle = Mathf.Round(angle / 90f) * 90f;
+                                finalRot = Quaternion.Euler(0, snappedAngle, 0);
+                            }
+                        }
+
                         finalPos = testPos;
-                        finalPos.y = areaObject.position.y;
+                        finalPos.y = areaObject.position.y; // Back to ground level
+                        validPosFound = true;
                     }
                 }
             }

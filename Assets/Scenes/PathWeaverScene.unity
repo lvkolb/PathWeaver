@@ -321,7 +321,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &214948286
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1470,7 +1470,7 @@ MonoBehaviour:
       m_Value: 0.2
   m_Spline: {fileID: 1411242878}
   m_SegmentsPerMeter: 1
-  m_Mesh: {fileID: 1744911760}
+  m_Mesh: {fileID: 1606536996}
   m_TextureScale: 1
 --- !u!33 &1411242881
 MeshFilter:
@@ -1479,7 +1479,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1411242877}
-  m_Mesh: {fileID: 1744911760}
+  m_Mesh: {fileID: 1606536996}
 --- !u!23 &1411242882
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1529,7 +1529,7 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!43 &1744911760
+--- !u!43 &1606536996
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}

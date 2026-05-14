@@ -4,24 +4,22 @@ using System.Reflection;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Splines;
+using Unity.Mathematics;
 
 public class MultiSplineDrawer : MonoBehaviour
 {
     public GameObject targetSpline;
     public float streetHeight = 0f;
 
-    [Header("Minimum distance between drawn points")]
+    [Header("Drawing Constraints")]
     [SerializeField] private float minDistance = 1f;
+    [Tooltip("Maximum distance to automatically weld endpoints together.")]
+    [SerializeField] private float connectThreshold = 1.5f;
 
-    [Header("Road Width for newly drawn splines")]
-    [Tooltip("Must match the Default Value shown for your pre-drawn splines (0.2). " +
-             "New splines default to 1.0 without this patch.")]
+    [Header("Road Width Generation")]
     [SerializeField] private float newSplineWidth = 0.2f;
 
-    [Header("Tools which execute after mouse release")]
-    [SerializeField] private SplineLinkTool linkTool;
-
-    [Header("Live Update (auto-found if not assigned)")]
+    [Header("Live Infrastructure Updates")]
     [SerializeField] private TrafficNetwork trafficNetwork;
     [SerializeField] private VehicleManager vehicleManager;
 
@@ -30,17 +28,14 @@ public class MultiSplineDrawer : MonoBehaviour
     private List<Vector3> currentPoints = new List<Vector3>();
     private InputAction holdAction;
     private bool isHolding;
-
-    // Cache all width-bearing components on the spline object once
     private Component[] widthComponents;
 
     private void Awake()
     {
         splineContainer = targetSpline.GetComponent<SplineContainer>();
-
-        // Grab every component — we'll probe each for a width list
         widthComponents = targetSpline.GetComponents<Component>();
 
+        // Set up input action for left mouse button holding
         holdAction = new InputAction(type: InputActionType.Button, binding: "<Mouse>/leftButton");
 
         holdAction.started += _ =>
@@ -54,12 +49,15 @@ public class MultiSplineDrawer : MonoBehaviour
             isHolding = false;
             currentPoints.Clear();
 
-            if (linkTool != null) linkTool.ConnectAllInternalSplines();
+            // INTEGRATION: Merges intersecting vertices instantly instead of using a separate script
+            ConnectAllInternalSplines();
 
-            if (trafficNetwork == null) trafficNetwork = FindObjectOfType<TrafficNetwork>();
+            // Notify the infrastructure network to bake new nodes
+            if (trafficNetwork == null) trafficNetwork = FindAnyObjectByType<TrafficNetwork>();
             if (trafficNetwork != null) trafficNetwork.RebuildGraph();
 
-            if (vehicleManager == null) vehicleManager = FindObjectOfType<VehicleManager>();
+            // Force all vehicles to find potential shortcuts on the new road
+            if (vehicleManager == null) vehicleManager = FindAnyObjectByType<VehicleManager>();
             if (vehicleManager != null) vehicleManager.RecalculateAllVehiclePaths();
         };
     }
@@ -71,13 +69,15 @@ public class MultiSplineDrawer : MonoBehaviour
     {
         if (!isHolding) return;
 
+        // Project mouse screen position onto the world space ground plane
         Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
         if (Physics.Raycast(ray, out RaycastHit hit))
         {
             Vector3 worldPos = hit.point;
             worldPos.y = streetHeight;
-            if (currentPoints.Count == 0 ||
-                Vector3.Distance(currentPoints[^1], worldPos) > minDistance)
+
+            // Add point if it is the first one or exceeds the minimum distance threshold
+            if (currentPoints.Count == 0 || Vector3.Distance(currentPoints[^1], worldPos) > minDistance)
             {
                 currentPoints.Add(worldPos);
                 UpdateSpline();
@@ -90,31 +90,73 @@ public class MultiSplineDrawer : MonoBehaviour
         activeSpline = new Spline();
         splineContainer.AddSpline(activeSpline);
 
-        int newIdx = splineContainer.Splines.Count - 1;
-        PatchAllWidthComponents(newIdx);
+        // Patch the mesh modifier component widths for the new spline index
+        PatchAllWidthComponents(splineContainer.Splines.Count - 1);
     }
 
     private void UpdateSpline()
     {
         if (activeSpline == null) return;
         activeSpline.Clear();
+
+        // Convert world points to local spline container space
         foreach (Vector3 worldPos in currentPoints)
         {
             Vector3 localPos = splineContainer.transform.InverseTransformPoint(worldPos);
             activeSpline.Add(new BezierKnot(localPos));
         }
-
-        // Tell any road-mesh component to rebuild
         RebuildAllRoadComponents();
     }
 
-    // ── Width patching ────────────────────────────────────────────────────────
-
     /// <summary>
-    /// Iterates every component on the spline GameObject and tries to set the
-    /// default width for the newly added spline index.
-    /// Handles: SplineExtrude (m_Widths), LoftRoadBehaviour (various field names).
+    /// Compares all spline endpoints and welds them together logically if within connectThreshold.
     /// </summary>
+    public void ConnectAllInternalSplines()
+    {
+        var splines = splineContainer.Splines;
+        for (int i = 0; i < splines.Count; i++)
+        {
+            for (int j = i + 1; j < splines.Count; j++)
+            {
+                CompareAndConnect(i, j);
+            }
+        }
+    }
+
+    private void CompareAndConnect(int indexA, int indexB)
+    {
+        var splineA = splineContainer.Splines[indexA];
+        var splineB = splineContainer.Splines[indexB];
+
+        for (int knotIdxA = 0; knotIdxA < splineA.Count; knotIdxA++)
+        {
+            float3 posA = splineA[knotIdxA].Position;
+            for (int knotIdxB = 0; knotIdxB < splineB.Count; knotIdxB++)
+            {
+                float3 posB = splineB[knotIdxB].Position;
+
+                // If endpoints are close enough, snap them to their shared midpoint
+                if (math.distance(posA, posB) <= connectThreshold)
+                {
+                    float3 midPoint = (posA + posB) * 0.5f;
+
+                    var knotA = splineA[knotIdxA];
+                    knotA.Position = midPoint;
+                    splineA[knotIdxA] = knotA;
+
+                    var knotB = splineB[knotIdxB];
+                    knotB.Position = midPoint;
+                    splineB[knotIdxB] = knotB;
+
+                    // Link the knots logically within the native Unity Spline system
+                    splineContainer.LinkKnots(new SplineKnotIndex(indexA, knotIdxA), new SplineKnotIndex(indexB, knotIdxB));
+                }
+            }
+        }
+    }
+
+    // ── Width Patching Engine via Reflection ──────────────────────────────────
+
     private void PatchAllWidthComponents(int splineIndex)
     {
         foreach (var comp in widthComponents)
@@ -129,14 +171,7 @@ public class MultiSplineDrawer : MonoBehaviour
     {
         Type compType = comp.GetType();
         var flags = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;
-
-        // Candidate field names used across SplineExtrude, LoftRoadBehaviour, and
-        // other road components in various Unity Splines package versions:
-        string[] candidateFields = {
-            "m_Widths", "m_Width", "widths", "width",
-            "m_RoadWidth", "roadWidth",
-            "m_Sizes", "sizes",
-        };
+        string[] candidateFields = { "m_Widths", "m_Width", "widths", "width", "m_RoadWidth", "roadWidth", "m_Sizes", "sizes" };
 
         foreach (string fieldName in candidateFields)
         {
@@ -146,51 +181,37 @@ public class MultiSplineDrawer : MonoBehaviour
             object value = field.GetValue(comp);
             if (value == null) continue;
 
-            // Case 1: It's a List<SplineData<float>> — one entry per spline
+            // Handle List-based width configurations (one entry per spline)
             if (value is System.Collections.IList list)
             {
                 if (splineIndex < list.Count)
                 {
                     SetSplineDataDefault(list[splineIndex], comp, fieldName, splineIndex);
                 }
-                else
+                else if (list.Count > 0)
                 {
-                    // List hasn't grown yet for the new spline — try adding a copy of element 0
-                    if (list.Count > 0)
+                    try
                     {
-                        try
-                        {
-                            // Clone element 0 and set its default value
-                            object template = list[0];
-                            object clone = CloneAndSetDefault(template, newSplineWidth);
-                            if (clone != null)
-                            {
-                                // Use Add via reflection (IList.Add works for non-generic too)
-                                list.Add(clone);
-                                Debug.Log($"MultiSplineDrawer: Added width entry on {compType.Name}.{fieldName}");
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogWarning($"MultiSplineDrawer: Could not add entry to {compType.Name}.{fieldName}: {e.Message}");
-                        }
+                        object template = list[0];
+                        object clone = CloneAndSetDefault(template, newSplineWidth);
+                        if (clone != null) list.Add(clone);
                     }
+                    catch (Exception e) { Debug.LogWarning($"Width Patch Error: {e.Message}"); }
                 }
-                return; // found the right field, stop searching
+                return;
             }
 
-            // Case 2: It's a single SplineData<float> (shared across all splines)
+            // Handle single SplineData configurations
             if (value.GetType().Name.StartsWith("SplineData"))
             {
                 SetSplineDataDefault(value, comp, fieldName, -1);
                 return;
             }
 
-            // Case 3: It's a plain float — just set it directly
+            // Handle basic float properties directly
             if (value is float)
             {
                 field.SetValue(comp, newSplineWidth);
-                Debug.Log($"MultiSplineDrawer: Set {compType.Name}.{fieldName} = {newSplineWidth}");
                 return;
             }
         }
@@ -210,20 +231,14 @@ public class MultiSplineDrawer : MonoBehaviour
             try
             {
                 fi.SetValue(splineDataObj, newSplineWidth);
-                // Write back (required for structs — value types don't mutate in place)
-                if (idx >= 0)
+                if (idx >= 0 && owner != null)
                 {
-                    FieldInfo listField = owner.GetType().GetField(fieldName,
-                        BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
+                    FieldInfo listField = owner.GetType().GetField(fieldName, flags);
                     if (listField?.GetValue(owner) is System.Collections.IList list && idx < list.Count)
                         list[idx] = splineDataObj;
                 }
-                Debug.Log($"MultiSplineDrawer: Set {owner.GetType().Name}.{fieldName}[{idx}].{df} = {newSplineWidth}");
             }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"MultiSplineDrawer: {e.Message}");
-            }
+            catch (Exception e) { Debug.LogWarning($"SplineData Assignment Error: {e.Message}"); }
             return;
         }
     }
@@ -233,12 +248,9 @@ public class MultiSplineDrawer : MonoBehaviour
         if (template == null) return null;
         try
         {
-            // SplineData<float> has a copy constructor or is a struct — use MemberwiseClone via reflection
-            MethodInfo clone = template.GetType().GetMethod("MemberwiseClone",
-                BindingFlags.NonPublic | BindingFlags.Instance);
+            MethodInfo clone = template.GetType().GetMethod("MemberwiseClone", BindingFlags.NonPublic | BindingFlags.Instance);
             object copy = clone != null ? clone.Invoke(template, null) : template;
 
-            // Clear data points list in the clone so it only inherits the default
             var flags = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;
             foreach (string f in new[] { "m_DataPoints", "dataPoints", "m_Data" })
             {
@@ -247,8 +259,6 @@ public class MultiSplineDrawer : MonoBehaviour
                 { pts.Clear(); break; }
             }
 
-            SetSplineDataDefault(copy, null, "", -1); // will fail gracefully, use direct set
-            // Direct set on the copy
             foreach (string df in new[] { "m_DefaultValue", "defaultValue" })
             {
                 FieldInfo fi = copy.GetType().GetField(df, flags);
@@ -261,12 +271,11 @@ public class MultiSplineDrawer : MonoBehaviour
 
     private void RebuildAllRoadComponents()
     {
+        // Dynamically invoke the Rebuild method on modern road generation components (e.g., SplineExtrude)
         foreach (var comp in widthComponents)
         {
             if (comp == null) continue;
-            // SplineExtrude
-            var rebuild = comp.GetType().GetMethod("Rebuild",
-                BindingFlags.Public | BindingFlags.Instance);
+            var rebuild = comp.GetType().GetMethod("Rebuild", BindingFlags.Public | BindingFlags.Instance);
             rebuild?.Invoke(comp, null);
         }
     }

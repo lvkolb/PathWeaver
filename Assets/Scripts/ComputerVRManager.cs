@@ -1,23 +1,23 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-public class ComputerVRManager : MonoBehaviour
+public class ComputerXRManager : MonoBehaviour
 {
-    [Header("On = Playmode for VR; OFF = Playmode for mouse/pc")]
-    public bool isVR = false;
+    [Header("On = Playmode for XR; OFF = Playmode for mouse/pc")]
+    public bool useXR = false;
 
     [Header("List of GameObjects")]
     public List<GameObject> gameObjectsForComputer = new();
-    public List<GameObject> gameObjectsForVR = new();
+    public List<GameObject> gameObjectsForXR = new();
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    void Awake()
     {
         foreach (GameObject obj in gameObjectsForComputer)
         {
             if (obj != null)
             {
-                if (isVR)
+                if (useXR)
                 {
                     obj.SetActive(false);
                 }
@@ -29,11 +29,11 @@ public class ComputerVRManager : MonoBehaviour
             }
         }
 
-        foreach (GameObject obj in gameObjectsForVR)
+        foreach (GameObject obj in gameObjectsForXR)
         {
             if (obj != null)
             {
-                if (isVR)
+                if (useXR)
                 {
                     obj.SetActive(true);
                 }

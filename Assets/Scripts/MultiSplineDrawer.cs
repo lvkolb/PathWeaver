@@ -8,6 +8,8 @@ using UnityEngine.InputSystem;
 
 public class MultiSplineDrawer : MonoBehaviour
 {
+    [Header("Drawing Source")]
+    public Transform drawingSource;
     public GameObject targetSpline;
     public float streetHeight = 0f;
 
@@ -55,18 +57,23 @@ public class MultiSplineDrawer : MonoBehaviour
     {
         if (!isHolding) return;
 
-        // Uses the new Input System package to read the live vector position
-        Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (Physics.Raycast(ray, out RaycastHit hit))
+        if (drawingSource == null)
         {
-            Vector3 worldPos = hit.point;
-            worldPos.y = streetHeight;
+            Debug.LogWarning("Please assign a 'drawingSource' GameObject in the Inspector!");
+            return;
+        }
 
-            if (currentPoints.Count == 0 || Vector3.Distance(currentPoints[^1], worldPos) > minDistance)
-            {
-                currentPoints.Add(worldPos);
-                UpdateSpline();
-            }
+        // 1. Retrieve the object's 3D position
+        Vector3 worldPos = drawingSource.position;
+
+        // 2. Set the position to your desired street level
+        worldPos.y = streetHeight;
+
+        // 3. Distance check
+        if (currentPoints.Count == 0 || Vector3.Distance(currentPoints[^1], worldPos) > minDistance)
+        {
+            currentPoints.Add(worldPos);
+            UpdateSpline();
         }
     }
     /// <summary>

@@ -1,51 +1,103 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
-using UnityEngine.InputSystem; // Wichtig für das neue Input System
+using UnityEngine.InputSystem;
 
 public class XRInputManager : MonoBehaviour
 {
-    [Header("XR Input Action")]
-    [SerializeField] private InputAction xrAction;
+    // The System.Serializable class bundles the action and its events for the Inspector
+    [Serializable]
+    public class XRActionMapping
+    {
+        [Header("Action Configuration")]
+        public string actionName = "New XR action";
+        public InputAction xrAction;
 
-    [Header("Global XR Events (Press and hold & Release)")]
-    public UnityEvent onXRHoldStart;
-    public UnityEvent onXRHoldCancel;
+        [Header("Events (Press & Release)")]
+        public UnityEvent onXRHoldStart;
+        public UnityEvent onXRHoldCancel;
 
-    [Header("XR Release ONLY the very first time")]
-    public UnityEvent onXRUpOnlyFirstTime;
+        [Header("Special Release (Only the very first time)")]
+        public UnityEvent onXRUpOnlyFirstTime;
 
-    private bool hasExecutedFirstTime = false;
+        // Each action manages its own "First Time" status independently of the others
+        [HideInInspector] public bool hasExecutedFirstTime = false;
+    }
+
+    [Header("XR Input Configurations")]
+    [SerializeField] private List<XRActionMapping> inputMappings = new List<XRActionMapping>();
 
     private void Awake()
     {
-
-        // .started corresponds to the first frame of the press
-        xrAction.started += _ =>
+        // We go through all the mappings created in the Inspector and wire them up
+        foreach (var mapping in inputMappings)
         {
-            if (onXRHoldStart != null) onXRHoldStart.Invoke();
-        };
+            // To ensure that we access the correct mapping in the lambda expressions (+= _ =>),
+            // we need to create a local copy of the reference (C# safety)
+            var currentMapping = mapping;
 
-        // .canceled corresponds to releasing the button
-        xrAction.canceled += _ =>
-        {
-            // 1. First, trigger the normal release event
-            if (onXRHoldCancel != null) onXRHoldCancel.Invoke();
-
-            // 2. Run the only one time event if it hasn't run yet
-            if (!hasExecutedFirstTime)
+            currentMapping.xrAction.started += _ =>
             {
-                if (onXRUpOnlyFirstTime != null) onXRUpOnlyFirstTime.Invoke();
-                hasExecutedFirstTime = true;
-            }
-        };
+                if (currentMapping.onXRHoldStart != null)
+                    currentMapping.onXRHoldStart.Invoke();
+            };
+
+            currentMapping.xrAction.canceled += _ =>
+            {
+                // 1. Trigger a normal release event
+                if (currentMapping.onXRHoldCancel != null)
+                    currentMapping.onXRHoldCancel.Invoke();
+
+                // 2. Execute the one time event if it hasn't already run for this key
+                if (!currentMapping.hasExecutedFirstTime)
+                {
+                    if (currentMapping.onXRUpOnlyFirstTime != null)
+                        currentMapping.onXRUpOnlyFirstTime.Invoke();
+
+                    currentMapping.hasExecutedFirstTime = true;
+                }
+            };
+        }
     }
 
-    // Important: The action created in the Inspector must be enabled or disabled
-    private void OnEnable() => xrAction.Enable();
-    private void OnDisable() => xrAction.Disable();
-
-    public void ResetFirstTimeTrigger()
+    // Loop to activate all registered actions at once
+    private void OnEnable()
     {
-        hasExecutedFirstTime = false;
+        foreach (var mapping in inputMappings)
+        {
+            mapping.xrAction.Enable();
+        }
+    }
+
+    // Loop for bulk deactivation
+    private void OnDisable()
+    {
+        foreach (var mapping in inputMappings)
+        {
+            mapping.xrAction.Disable();
+        }
+    }
+
+    // Resets the first-time trigger for ALL actions.
+    public void ResetAllFirstTimeTriggers()
+    {
+        foreach (var mapping in inputMappings)
+        {
+            mapping.hasExecutedFirstTime = false;
+        }
+    }
+
+    // Resets the first-time trigger for a specific action by its name.
+    public void ResetFirstTimeTriggerByName(string nameOfAction)
+    {
+        foreach (var mapping in inputMappings)
+        {
+            if (mapping.actionName == nameOfAction)
+            {
+                mapping.hasExecutedFirstTime = false;
+                break;
+            }
+        }
     }
 }

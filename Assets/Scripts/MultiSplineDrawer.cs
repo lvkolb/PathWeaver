@@ -13,9 +13,10 @@ public class MultiSplineDrawer : MonoBehaviour
     public GameObject targetSpline;
     public float streetHeight = 0f;
 
-    [Header("Drawing Constraints")]
-    [SerializeField] private float minDistance = 1f;
-    [SerializeField] private float connectThreshold = 1.5f;
+    [Header("Distance from the previous knot until a new knot can be created")]
+    [SerializeField] private float minDistance = 0.1f;
+    [Header("The distance when several knots are linked")]
+    [SerializeField] private float connectThreshold = 0.09f;
 
     [Header("Road Width Generation")]
     public float splineWidth = 0.2f;

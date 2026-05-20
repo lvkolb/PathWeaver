@@ -10,7 +10,8 @@ public class BuildingManager : MonoBehaviour
     public int amount = 100;
 
     [Header("Road Settings")]
-    public GameObject splineManager;
+    private float roadWidth = 0.5f;
+    public MultiSplineDrawer multiSplineDrawer;
     public SplineContainer roadSpline;
 
     [Header("Avoid collision")]
@@ -27,7 +28,7 @@ public class BuildingManager : MonoBehaviour
     public bool use90DegreeSnapping = true;
     private List<GameObject> spawnedBuildings = new List<GameObject>();
 
-    private float roadWidth = 0.5f;
+
 
     [ContextMenu("Refresh Buidlings")]
 
@@ -80,19 +81,10 @@ public class BuildingManager : MonoBehaviour
 
     public void Start()
     {
-        roadWidth = GetRoadWidth();
+        roadWidth = multiSplineDrawer.splineWidth;
     }
 
-    private float GetRoadWidth()
-    {
-        if (splineManager != null)
-        {
-            float width = splineManager.GetComponent<MultiSplineDrawer>().splineWidth;
-            Debug.Log("Roadwidth found: " + width);
-            return width;
-        }
-        return 0.5f;
-    }
+
 
     private void ValidateExistingBuildings()
     {

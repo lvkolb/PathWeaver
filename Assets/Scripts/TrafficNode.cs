@@ -20,6 +20,10 @@ public class TrafficNode : MonoBehaviour
     public int splineIndex = -1;
     public float tValue = 0f;
 
+    [Header("Gizmo Arrow Settings")]
+    [SerializeField] private float arrowWidth = 0.01f;
+    [SerializeField] private float arrowLength = 0.015f;
+
     /// <summary>
     /// Establishes a synchronized one-way connection to a target node.
     /// </summary>
@@ -48,7 +52,7 @@ public class TrafficNode : MonoBehaviour
     {
         // Color coding for clear visualization in the Scene View
         Gizmos.color = (nodeType == NodeType.Intersection) ? Color.yellow : Color.cyan;
-        float radius = (nodeType == NodeType.Intersection) ? 0.3f : 0.15f;
+        float radius = (nodeType == NodeType.Intersection) ? 0.03f : 0.015f;
         Gizmos.DrawSphere(transform.position, radius);
 
         // Draw path connections with direction arrows
@@ -65,9 +69,9 @@ public class TrafficNode : MonoBehaviour
             Vector3 dir = (to - from).normalized;
             if (dir != Vector3.zero)
             {
-                Vector3 right = Vector3.Cross(Vector3.up, dir) * 0.2f;
-                Gizmos.DrawLine(mid, mid - dir * 0.3f + right);
-                Gizmos.DrawLine(mid, mid - dir * 0.3f - right);
+                Vector3 right = Vector3.Cross(Vector3.up, dir) * arrowWidth;
+                Gizmos.DrawLine(mid, mid - dir * arrowLength + right);
+                Gizmos.DrawLine(mid, mid - dir * arrowLength - right);
             }
         }
     }

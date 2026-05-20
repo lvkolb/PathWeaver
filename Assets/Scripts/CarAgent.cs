@@ -7,9 +7,10 @@ using System.Collections.Generic;
 public class CarAgent : MonoBehaviour
 {
     [Header("Settings")]
-    public float baseSpeed = 10f;
-    public float laneOffset = 0.6f;
+    public float baseSpeed = 5f;
     public float stopDuration = 2f;
+    public float roadWidth = 0.02f;
+    private float laneOffset;
 
     [Header("References")]
     public TrafficNetwork network;
@@ -43,6 +44,13 @@ public class CarAgent : MonoBehaviour
         isWaiting = false;
 
         RecalculatePath();
+    }
+
+    void Start()
+    {
+
+        laneOffset = roadWidth / 4;
+
     }
 
     void Update()

@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 7832100553637989121}
   - component: {fileID: 8206026279796607144}
   - component: {fileID: 8482417581428893677}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -125,7 +125,7 @@ GameObject:
   - component: {fileID: 4312021079130811477}
   - component: {fileID: 1687390328279363129}
   - component: {fileID: 4237962850491737033}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (5)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -238,7 +238,7 @@ GameObject:
   - component: {fileID: 443250234516729568}
   - component: {fileID: 1229668301427091308}
   - component: {fileID: 2983136430028409957}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (2)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -351,7 +351,7 @@ GameObject:
   - component: {fileID: 1262254492569063423}
   - component: {fileID: 2992630096936282694}
   - component: {fileID: 170877052888507333}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (4)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -461,7 +461,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8786909530487804469}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Windows
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -499,7 +499,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7694075823905951463}
   - component: {fileID: 4426325278038271066}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Building (1)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -556,7 +556,7 @@ GameObject:
   - component: {fileID: 5279789925016661161}
   - component: {fileID: 3777543583032960773}
   - component: {fileID: 4304238448063357290}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (3)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -669,7 +669,7 @@ GameObject:
   - component: {fileID: 1593096315243132074}
   - component: {fileID: 6103437814613852102}
   - component: {fileID: 2911768378368439786}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (1)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -781,6 +781,10 @@ PrefabInstance:
     - target: {fileID: 100000, guid: 22106dc63dce41746ad234a91af2d657, type: 3}
       propertyPath: m_Name
       value: Building Sky_big_color01
+      objectReference: {fileID: 0}
+    - target: {fileID: 100000, guid: 22106dc63dce41746ad234a91af2d657, type: 3}
+      propertyPath: m_Layer
+      value: 8
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 22106dc63dce41746ad234a91af2d657, type: 3}
       propertyPath: m_LocalScale.x

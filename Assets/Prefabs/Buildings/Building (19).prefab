@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 4843173106662441560}
   - component: {fileID: 8500915467698375850}
   - component: {fileID: 994511587164332327}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -123,7 +123,7 @@ GameObject:
   m_Component:
   - component: {fileID: 5612664459267591762}
   - component: {fileID: 5431090730005773514}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Building (19)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -182,7 +182,7 @@ GameObject:
   - component: {fileID: 8144011100993962570}
   - component: {fileID: 2203651455044937665}
   - component: {fileID: 8201202953033096640}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (1)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -295,7 +295,7 @@ GameObject:
   - component: {fileID: 7002934373934134444}
   - component: {fileID: 1713205137254389723}
   - component: {fileID: 5441681509047251784}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (2)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -407,6 +407,10 @@ PrefabInstance:
     - target: {fileID: 100000, guid: 931fa17f0ab17504bbfc8903e54e6a16, type: 3}
       propertyPath: m_Name
       value: Building_Fruits  Shop
+      objectReference: {fileID: 0}
+    - target: {fileID: 100000, guid: 931fa17f0ab17504bbfc8903e54e6a16, type: 3}
+      propertyPath: m_Layer
+      value: 8
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 931fa17f0ab17504bbfc8903e54e6a16, type: 3}
       propertyPath: m_LocalScale.x

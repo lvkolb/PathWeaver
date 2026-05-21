@@ -9,7 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 6211645396949391040}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Windows
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -50,7 +50,7 @@ GameObject:
   - component: {fileID: 7700653216236633687}
   - component: {fileID: 5872807057585008698}
   - component: {fileID: 6826836471340348511}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (5)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -163,7 +163,7 @@ GameObject:
   - component: {fileID: 2964793182958632801}
   - component: {fileID: 7413597118544620582}
   - component: {fileID: 7453439544365420797}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -276,7 +276,7 @@ GameObject:
   - component: {fileID: 32468231722373199}
   - component: {fileID: 4370736526828545330}
   - component: {fileID: 5968434657747836879}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (3)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -389,7 +389,7 @@ GameObject:
   - component: {fileID: 2121142828587552834}
   - component: {fileID: 3722535508488012536}
   - component: {fileID: 1493403648569439841}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (6)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -500,7 +500,7 @@ GameObject:
   m_Component:
   - component: {fileID: 5724469273281552031}
   - component: {fileID: 2761629130863991300}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Building (6)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -557,7 +557,7 @@ GameObject:
   - component: {fileID: 3208231881325556266}
   - component: {fileID: 8828455502983390217}
   - component: {fileID: 4162395316306728460}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (1)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -670,7 +670,7 @@ GameObject:
   - component: {fileID: 1095440176335034293}
   - component: {fileID: 3408981855972075439}
   - component: {fileID: 3142750002224527616}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (4)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -783,7 +783,7 @@ GameObject:
   - component: {fileID: 4958109606303562514}
   - component: {fileID: 6855464484033690199}
   - component: {fileID: 7831375436088877211}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Window (2)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -895,6 +895,10 @@ PrefabInstance:
     - target: {fileID: 100000, guid: 1d3fc70685d97b748ac1264d8da02551, type: 3}
       propertyPath: m_Name
       value: Building Sky_big_color03
+      objectReference: {fileID: 0}
+    - target: {fileID: 100000, guid: 1d3fc70685d97b748ac1264d8da02551, type: 3}
+      propertyPath: m_Layer
+      value: 8
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 1d3fc70685d97b748ac1264d8da02551, type: 3}
       propertyPath: m_LocalScale.x

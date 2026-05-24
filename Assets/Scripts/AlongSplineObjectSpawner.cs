@@ -6,33 +6,54 @@ using Unity.Mathematics;
 
 public class AlongSplineObjectSpawner : MonoBehaviour
 {
+    // Struct to hold individual object pools and their specific placement parameters
+    [System.Serializable]
+    public struct SpawnGroupConfiguration
+    {
+        [Header("Group Identity")]
+        [Tooltip("Gives the group a clear name in the inspector (e.g., Houses or Streetlamps).")]
+        public string groupName;
+
+        [Header("References")]
+        [Tooltip("The parent folder gameobject in which objects of this specific group are spawned.")]
+        public Transform objectsFolder;
+
+        [Header("Spawn Pool")]
+        [Tooltip("The prefabs assigned to this specific group (e.g., various house models or different light variants).")]
+        public List<GameObject> objectPrefabs;
+
+        [Header("Placement Settings")]
+        [Tooltip("Clear clearance distance measured directly from the generated road edge.")]
+        public float spacingFromRoad;
+        [Tooltip("The step distance along the spline layout for these objects.")]
+        public float spawnInterval;
+        [Tooltip("Maximum random variation added or subtracted from the step distance to break grid alignment.")]
+        public float spawnIntervalRandomness;
+
+        [Header("Collision Layers")]
+        [Tooltip("Which layers block these specific items during the placement query check?")]
+        public LayerMask avoidanceLayers;
+
+        [Header("Side Toggle")]
+        [Tooltip("Should these specific objects spawn on the right side of the road layout?")]
+        public bool spawnOnRightSide;
+        [Tooltip("Should these specific objects spawn on the left side of the road layout?")]
+        public bool spawnOnLeftSide;
+    }
+
     [Header("References")]
     [SerializeField] private SplineContainer splineContainer;
     [Header("The field from which we dynamically read the current road width (splineWidth).")]
     [SerializeField] private MultiSplineDrawer multiSplineDrawer;
 
-    [Header("The gameobject in which all objects are spawned.")]
-    [SerializeField] private Transform objectsFolder;
+    [Header("Multi-Pool Configurations")]
+    [Tooltip("Create custom generation sets here (e.g., Element 0 for residential houses, Element 1 for streetlights).")]
+    [SerializeField] private List<SpawnGroupConfiguration> spawnGroups = new List<SpawnGroupConfiguration>();
 
-    [Header("Spawn Pool")]
-    [SerializeField] private List<GameObject> objectPrefabs = new List<GameObject>();
-
-    [Header("Placement Settings")]
-    [Tooltip("The clear distance measured directly from the actual road edge to the house front face.")]
-    [SerializeField] private float spacingFromRoad = 0f;
-    [Tooltip("The intervals (in meters) at which the script checks for building slots along the spline.")]
-    [SerializeField] private float spawnInterval = 0.1f;
-    [Tooltip("Maximum random variation added or subtracted from the spawn interval.")]
-    [SerializeField] private float spawnIntervalRandomness = 0f;
-
-    [Header("Collision Layers")]
-    [Tooltip("LayerMask for objects (e.g., Buildings, Street Light) to check for collisions and demolish blocking objects.")]
-    [SerializeField] private LayerMask avoidanceLayers;
-
-    // Stores the references of the splines that have already been processed and decorated
+    // Stores the references of the splines that have already been decorated
     private HashSet<Spline> processedSplines = new HashSet<Spline>();
 
-    // Internal list to track generated objects so they can be safely removed on clear
+    // Internal list to track generated objects so they can be safely removed on clear execution
     private List<GameObject> spawnedDecoObjects = new List<GameObject>();
 
 
@@ -53,7 +74,13 @@ public class AlongSplineObjectSpawner : MonoBehaviour
             if (!processedSplines.Contains(spline))
             {
                 DemolishObjectsInWayOfSpline(i);
-                SpawnObjectsForSingleSpline(i, rng);
+
+                // Process each configuration group sequentially along the newly added spline line
+                foreach (var group in spawnGroups)
+                {
+                    SpawnGroupForSingleSpline(i, group, rng);
+                }
+
                 processedSplines.Add(spline);
             }
         }
@@ -74,6 +101,10 @@ public class AlongSplineObjectSpawner : MonoBehaviour
 
         Vector3 roadCheckHalfSize = new Vector3(halfRoadWidth, 3.0f, checkStep * 0.5f);
 
+        // Combine the layer masks of all configuration groups for the global layout clearance sweep
+        LayerMask combinedLayers = 0;
+        foreach (var group in spawnGroups) combinedLayers |= group.avoidanceLayers;
+
         while (currentDistance <= splineLength)
         {
             float t = Mathf.Clamp01(currentDistance / splineLength);
@@ -85,7 +116,7 @@ public class AlongSplineObjectSpawner : MonoBehaviour
                 Quaternion roadRotation = Quaternion.LookRotation(tangent);
                 Vector3 centerOfRoad = (Vector3)worldPos;
 
-                Collider[] hitColliders = Physics.OverlapBox(centerOfRoad, roadCheckHalfSize, roadRotation, avoidanceLayers);
+                Collider[] hitColliders = Physics.OverlapBox(centerOfRoad, roadCheckHalfSize, roadRotation, combinedLayers);
 
                 foreach (var col in hitColliders)
                 {
@@ -116,11 +147,11 @@ public class AlongSplineObjectSpawner : MonoBehaviour
 
 
     // =================================================================================
-    // FUNCTION 2: SPAWNING (Left and Right alongside the Spline)
+    // FUNCTION 2: SPAWNING FOR A SPECIFIC CONFIGURATION GROUP
     // =================================================================================
-    private void SpawnObjectsForSingleSpline(int splineIndex, System.Random rng)
+    private void SpawnGroupForSingleSpline(int splineIndex, SpawnGroupConfiguration group, System.Random rng)
     {
-        if (splineContainer == null || objectPrefabs == null || objectPrefabs.Count == 0) return;
+        if (splineContainer == null || group.objectPrefabs == null || group.objectPrefabs.Count == 0) return;
 
         var spline = splineContainer.Splines[splineIndex];
         float4x4 containerMatrix = splineContainer.transform.localToWorldMatrix;
@@ -141,15 +172,22 @@ public class AlongSplineObjectSpawner : MonoBehaviour
             {
                 Vector3 rightVector = Vector3.Cross(up, tangent).normalized;
 
-                // --- SPAWN RIGHT SIDE ---
-                TryPlaceSideObject((Vector3)worldPos, rightVector, true, rng);
+                // --- SPAWN RIGHT SIDE (IF ENABLED IN GROUP) ---
+                if (group.spawnOnRightSide)
+                {
+                    TryPlaceSideObject((Vector3)worldPos, rightVector, true, group, rng);
+                }
 
-                // --- SPAWN LEFT SIDE ---
-                TryPlaceSideObject((Vector3)worldPos, rightVector, false, rng);
+                // --- SPAWN LEFT SIDE (IF ENABLED IN GROUP) ---
+                if (group.spawnOnLeftSide)
+                {
+                    TryPlaceSideObject((Vector3)worldPos, rightVector, false, group, rng);
+                }
             }
 
-            float randomness = (float)(rng.NextDouble() * (spawnIntervalRandomness * 2) - spawnIntervalRandomness);
-            float nextStep = spawnInterval + randomness;
+            // Apply group-specific spacing increment parameters
+            float randomness = (float)(rng.NextDouble() * (group.spawnIntervalRandomness * 2) - group.spawnIntervalRandomness);
+            float nextStep = group.spawnInterval + randomness;
 
             if (nextStep < 0.001f) nextStep = 0.001f;
 
@@ -157,10 +195,10 @@ public class AlongSplineObjectSpawner : MonoBehaviour
         }
     }
 
-    private void TryPlaceSideObject(Vector3 roadCenter, Vector3 rightDirection, bool isRightSide, System.Random rng)
+    private void TryPlaceSideObject(Vector3 roadCenter, Vector3 rightDirection, bool isRightSide, SpawnGroupConfiguration group, System.Random rng)
     {
-        int randomIndex = rng.Next(0, objectPrefabs.Count);
-        GameObject randomPrefab = objectPrefabs[randomIndex];
+        int randomIndex = rng.Next(0, group.objectPrefabs.Count);
+        GameObject randomPrefab = group.objectPrefabs[randomIndex];
 
         if (randomPrefab == null) return;
         BoxCollider col = randomPrefab.GetComponent<BoxCollider>();
@@ -169,61 +207,57 @@ public class AlongSplineObjectSpawner : MonoBehaviour
         float microScaleFactor = 0.04f;
         Vector3 targetScale = new Vector3(microScaleFactor, microScaleFactor, microScaleFactor);
 
-        // Calculate the orientation (rotation) of the house in advance
         Vector3 lookDir = isRightSide ? -rightDirection : rightDirection;
         Quaternion spawnRotation = Quaternion.LookRotation(lookDir);
 
-        // ============================================================================
-        // ROTATION FIX:
-        // ============================================================================
-        // We mentally transform the unscaled corners of the BoxCollider into the 
-        // final rotation and scaling. From this, we project the exact width 
-        // that the rotated house occupies in the direction of the road (rightDirection).
+        // --- THE ADVANCED ROTATION FIX ---
+        // Mathematically project the unscaled bounding box corners into world space orientation
+        // using the final target rotation and micro scale dimensions.
         Matrix4x4 localToWorldMatrix = Matrix4x4.TRS(Vector3.zero, spawnRotation, targetScale);
 
         Vector3 halfSize = col.size * 0.5f;
         Vector3 localCenter = col.center;
 
-        // We test the outer corner points of the collider whilst it is rotating
+        // Extract outer footprint boundary corner vectors
         Vector3 p1 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(halfSize.x, 0, halfSize.z));
         Vector3 p2 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(-halfSize.x, 0, halfSize.z));
         Vector3 p3 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(halfSize.x, 0, -halfSize.z));
         Vector3 p4 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(-halfSize.x, 0, -halfSize.z));
 
-        // We measure the maximum deviation along the road direction vector
+        // Gauge real physical extension limits pointing directly towards the road margin track
         float proj1 = Vector3.Dot(p1, rightDirection);
         float proj2 = Vector3.Dot(p2, rightDirection);
         float proj3 = Vector3.Dot(p3, rightDirection);
         float proj4 = Vector3.Dot(p4, rightDirection);
 
         float maxProj = Mathf.Max(Mathf.Abs(proj1), Mathf.Abs(proj2), Mathf.Abs(proj3), Mathf.Abs(proj4));
-
-        // That is exactly half the width of the rotated house facing the street!
         float rotatedObjectHalfWidth = maxProj;
 
         float halfRoadWidth = (multiSplineDrawer != null) ? multiSplineDrawer.splineWidth * 0.5f : 0f;
 
-        // UNIFIED FORMULA: Half the road width + desired distance + exactly half the width of the house
-        float totalOffset = halfRoadWidth + spacingFromRoad + rotatedObjectHalfWidth;
+        // MAIN OFFSET FORMULA: Half road width + group side clearance margin + exact projected item boundary depth
+        float totalOffset = halfRoadWidth + group.spacingFromRoad + rotatedObjectHalfWidth;
 
         Vector3 spawnDirection = isRightSide ? rightDirection : -rightDirection;
         Vector3 spawnPosition = roadCenter + (spawnDirection * totalOffset);
         spawnPosition.y = splineContainer.transform.position.y;
 
-        // Work out the exact dimensions for the test box in the room
+        // Calculate custom spatial query dimensions matching current active group rules
         Vector3 unrotatedExtents = (col.size * microScaleFactor) * 0.5f;
         Vector3 checkBoxExtents = unrotatedExtents;
-        checkBoxExtents.x += spacingFromRoad;
-        checkBoxExtents.z += spawnInterval;
+        checkBoxExtents.x += group.spacingFromRoad;
+        checkBoxExtents.z += group.spawnInterval;
         checkBoxExtents.y += 0.5f;
 
-        if (!Physics.CheckBox(spawnPosition, checkBoxExtents, spawnRotation, avoidanceLayers))
+        // Query workspace utilizing group-specific layer filter boundaries
+        if (!Physics.CheckBox(spawnPosition, checkBoxExtents, spawnRotation, group.avoidanceLayers))
         {
             GameObject newObj = Instantiate(randomPrefab, spawnPosition, spawnRotation);
             newObj.transform.localScale = targetScale;
 
-            if (objectsFolder != null)
-                newObj.transform.parent = objectsFolder;
+            // FIX: Uses the folder specified directly inside this configuration element
+            if (group.objectsFolder != null)
+                newObj.transform.parent = group.objectsFolder;
             else
                 newObj.transform.parent = this.transform;
 
@@ -233,7 +267,7 @@ public class AlongSplineObjectSpawner : MonoBehaviour
 
 
     // =================================================================================
-    // FUNCTION 3: CLEAR / DEMOLISH ALL
+    // FUNCTION 3: CLEAR ALL
     // =================================================================================
     [ContextMenu("Clear All Spawned Objects")]
     public void ClearAllSpawnedObjects()
@@ -252,7 +286,7 @@ public class AlongSplineObjectSpawner : MonoBehaviour
 
         spawnedDecoObjects.Clear();
         processedSplines.Clear();
-        Debug.Log("All objects generated by this spawner have been successfully cleared!");
+        Debug.Log("All multi-pool objects generated by this spawner have been successfully cleared!");
     }
 
     [ContextMenu("Clear and Check")]

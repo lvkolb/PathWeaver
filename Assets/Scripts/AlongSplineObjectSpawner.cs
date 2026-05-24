@@ -19,14 +19,14 @@ public class AlongSplineObjectSpawner : MonoBehaviour
 
     [Header("Placement Settings")]
     [Tooltip("The clear distance measured directly from the actual road edge to the house front face.")]
-    [SerializeField] private float spacingFromRoad = 0.1f;
+    [SerializeField] private float spacingFromRoad = 0f;
     [Tooltip("The intervals (in meters) at which the script checks for building slots along the spline.")]
     [SerializeField] private float spawnInterval = 0.1f;
     [Tooltip("Maximum random variation added or subtracted from the spawn interval.")]
     [SerializeField] private float spawnIntervalRandomness = 0f;
 
     [Header("Collision Layers")]
-    [Tooltip("LayerMask for objects (e.g., Buildings, Strret Light) to check for collisions and demolish blocking objects.")]
+    [Tooltip("LayerMask for objects (e.g., Buildings, Street Light) to check for collisions and demolish blocking objects.")]
     [SerializeField] private LayerMask avoidanceLayers;
 
     // Stores the references of the splines that have already been processed and decorated
@@ -44,7 +44,6 @@ public class AlongSplineObjectSpawner : MonoBehaviour
     {
         if (splineContainer == null) return;
 
-        // Dedicated C# System.Random instance to prevent the Unity seed-locking bug at micro-steps
         System.Random rng = new System.Random();
 
         for (int i = 0; i < splineContainer.Splines.Count; i++)
@@ -167,39 +166,61 @@ public class AlongSplineObjectSpawner : MonoBehaviour
         BoxCollider col = randomPrefab.GetComponent<BoxCollider>();
         if (col == null) return;
 
-        Vector3 prefabScale = randomPrefab.transform.localScale;
-        Vector3 finalExtents = Vector3.Scale(col.size, prefabScale) * 0.5f;
+        float microScaleFactor = 0.04f;
+        Vector3 targetScale = new Vector3(microScaleFactor, microScaleFactor, microScaleFactor);
 
-        float objectHalfWidth = Mathf.Max(finalExtents.x, finalExtents.z);
+        // Calculate the orientation (rotation) of the house in advance
+        Vector3 lookDir = isRightSide ? -rightDirection : rightDirection;
+        Quaternion spawnRotation = Quaternion.LookRotation(lookDir);
+
+        // ============================================================================
+        // ROTATION FIX:
+        // ============================================================================
+        // We mentally transform the unscaled corners of the BoxCollider into the 
+        // final rotation and scaling. From this, we project the exact width 
+        // that the rotated house occupies in the direction of the road (rightDirection).
+        Matrix4x4 localToWorldMatrix = Matrix4x4.TRS(Vector3.zero, spawnRotation, targetScale);
+
+        Vector3 halfSize = col.size * 0.5f;
+        Vector3 localCenter = col.center;
+
+        // We test the outer corner points of the collider whilst it is rotating
+        Vector3 p1 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(halfSize.x, 0, halfSize.z));
+        Vector3 p2 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(-halfSize.x, 0, halfSize.z));
+        Vector3 p3 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(halfSize.x, 0, -halfSize.z));
+        Vector3 p4 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(-halfSize.x, 0, -halfSize.z));
+
+        // We measure the maximum deviation along the road direction vector
+        float proj1 = Vector3.Dot(p1, rightDirection);
+        float proj2 = Vector3.Dot(p2, rightDirection);
+        float proj3 = Vector3.Dot(p3, rightDirection);
+        float proj4 = Vector3.Dot(p4, rightDirection);
+
+        float maxProj = Mathf.Max(Mathf.Abs(proj1), Mathf.Abs(proj2), Mathf.Abs(proj3), Mathf.Abs(proj4));
+
+        // That is exactly half the width of the rotated house facing the street!
+        float rotatedObjectHalfWidth = maxProj;
+
         float halfRoadWidth = (multiSplineDrawer != null) ? multiSplineDrawer.splineWidth * 0.5f : 0f;
 
-        // UNIFIED FORMULA: Half road width + single spacing parameter + half width of variable object prefab
-        float totalOffset = halfRoadWidth + spacingFromRoad + objectHalfWidth;
+        // UNIFIED FORMULA: Half the road width + desired distance + exactly half the width of the house
+        float totalOffset = halfRoadWidth + spacingFromRoad + rotatedObjectHalfWidth;
 
         Vector3 spawnDirection = isRightSide ? rightDirection : -rightDirection;
         Vector3 spawnPosition = roadCenter + (spawnDirection * totalOffset);
         spawnPosition.y = splineContainer.transform.position.y;
 
-        Vector3 lookDir = isRightSide ? -rightDirection : rightDirection;
-        Quaternion spawnRotation = Quaternion.LookRotation(lookDir);
-
-        // ============================================================================
-        // THE MICRO-SCALE FIX FOR THE PHYSICS CHECKBOX
-        // ============================================================================
-        Vector3 checkBoxExtents = finalExtents;
-
-        // Width buffer (towards/away from road) is safely guarded by spacingFromRoad
+        // Work out the exact dimensions for the test box in the room
+        Vector3 unrotatedExtents = (col.size * microScaleFactor) * 0.5f;
+        Vector3 checkBoxExtents = unrotatedExtents;
         checkBoxExtents.x += spacingFromRoad;
-
-        // LENGTH BUFFER FIX: In driving direction (Z), the box needs a buffer based on 
-        // your spawnInterval, not the tiny spacingFromRoad. Otherwise, 1cm steps self-block instantly.
         checkBoxExtents.z += spawnInterval;
-
-        checkBoxExtents.y += 0.5f; // Vertical safety clearance
+        checkBoxExtents.y += 0.5f;
 
         if (!Physics.CheckBox(spawnPosition, checkBoxExtents, spawnRotation, avoidanceLayers))
         {
             GameObject newObj = Instantiate(randomPrefab, spawnPosition, spawnRotation);
+            newObj.transform.localScale = targetScale;
 
             if (objectsFolder != null)
                 newObj.transform.parent = objectsFolder;
@@ -240,5 +261,4 @@ public class AlongSplineObjectSpawner : MonoBehaviour
         ClearAllSpawnedObjects();
         CheckForNewSplinesAndSpawn();
     }
-
 }

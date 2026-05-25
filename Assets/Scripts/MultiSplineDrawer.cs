@@ -37,6 +37,66 @@ public class MultiSplineDrawer : MonoBehaviour
         widthComponents = targetSpline.GetComponents<Component>();
     }
 
+    // =================================================================================
+    // CLEAR ALL SPLINES & ROAD DATA
+    // =================================================================================
+    [ContextMenu("Clear All Splines")]
+    public void ClearAllSplines()
+    {
+        if (splineContainer == null)
+            splineContainer = targetSpline.GetComponent<SplineContainer>();
+
+        if (widthComponents == null || widthComponents.Length == 0)
+            widthComponents = targetSpline.GetComponents<Component>();
+
+        isHolding = false;
+        activeSpline = null;
+        currentPoints.Clear();
+
+        // 1. Safely remove every single spline inside the container
+        if (splineContainer != null)
+        {
+            // Clearing the splines automatically clears their associated knot links
+            for (int i = splineContainer.Splines.Count - 1; i >= 0; i--)
+            {
+                splineContainer.RemoveSplineAt(i);
+            }
+        }
+
+        // 2. Clear reflection-mapped array lists on internal road generator modules 
+        // to match the empty spline container length
+        var flags = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;
+        string[] candidateFields = { "m_Widths", "m_Width", "widths", "width", "m_RoadWidth", "roadWidth", "m_Sizes", "sizes" };
+
+        foreach (var comp in widthComponents)
+        {
+            if (comp == null) continue;
+            Type compType = comp.GetType();
+
+            foreach (string fieldName in candidateFields)
+            {
+                FieldInfo field = compType.GetField(fieldName, flags);
+                if (field == null) continue;
+
+                object value = field.GetValue(comp);
+                if (value == null) continue;
+
+                if (value is System.Collections.IList list)
+                {
+                    list.Clear();
+                    break;
+                }
+            }
+        }
+
+        // 3. Force live road mesh visual recalculation layout updates immediately
+        RebuildAllRoadComponents();
+
+        // 4. Notify structural tracking networks to flatten calculations
+        DefaultNetworkAndVehicleUpdates();
+
+        Debug.Log("<color=red>[Spline Drawer]</color> All generated road splines and width maps were successfully cleared in Unity 6!");
+    }
     public void StartDrawing()
     {
         isHolding = true;

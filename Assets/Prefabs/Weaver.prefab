@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 3282453174395131588}
   - component: {fileID: 3285874417250081970}
   m_Layer: 0
-  m_Name: Player
+  m_Name: Weaver
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -85,7 +85,7 @@ GameObject:
   - component: {fileID: 4622898563084782689}
   - component: {fileID: 2816787557755144101}
   m_Layer: 0
-  m_Name: Player
+  m_Name: Capsule
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

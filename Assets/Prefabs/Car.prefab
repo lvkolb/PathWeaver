@@ -173,7 +173,7 @@ TrailRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0.5
-        value: 0.4559372
+        value: 0.1
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -238,7 +238,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CarAgent
   baseSpeed: 1
   stopDuration: 2
-  laneOffset: 0.1
+  laneOffset: 0.05
   detectionDistance: 0.5
   minStoppingDistance: 0.1
   sphereRadius: 0.05

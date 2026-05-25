@@ -6,11 +6,20 @@ using System.Collections.Generic;
 
 public class CarAgent : MonoBehaviour
 {
-    [Header("Settings")]
-    public float baseSpeed = 5f;
+    [Header("Movement Settings")]
+    public float baseSpeed = 1f;
     public float stopDuration = 2f;
-    public float roadWidth = 0.02f;
-    private float laneOffset;
+
+    // Made laneOffset public so you can increase it. Try 0.5f or 1.0f depending on your car size!
+    [Tooltip("Distance from the center of the spline to the center of the lane")]
+    public float laneOffset = 0.1f;
+
+    [Header("Collision Avoidance")]
+    public float detectionDistance = 0.5f;
+    public float minStoppingDistance = 0.1f;
+    public float sphereRadius = 0.05f; // How "fat" the detection ray is
+    public LayerMask vehicleLayer;
+    private float currentSpeed;
 
     [Header("References")]
     public TrafficNetwork network;
@@ -46,19 +55,60 @@ public class CarAgent : MonoBehaviour
         RecalculatePath();
     }
 
-    void Start()
-    {
-
-        laneOffset = roadWidth / 4;
-
-    }
-
     void Update()
     {
         if (currentTarget == null || isWaiting) return;
 
+        CalculateDynamicSpeed();
+
         if (useSpline) MoveAlongSpline();
         else MoveDirectly();
+    }
+
+    private void CalculateDynamicSpeed()
+    {
+        currentSpeed = baseSpeed;
+
+        // Elevate the ray so it shoots out of the windshield/grill, not the floor
+        Vector3 rayOrigin = transform.position + (Vector3.up * 0.05f);
+
+        // Get EVERYTHING the sphere hits in front of the car
+        RaycastHit[] hits = Physics.SphereCastAll(rayOrigin, sphereRadius, transform.forward, detectionDistance, vehicleLayer);
+        Debug.Log($"Total hits: {hits.Length}");
+        float closestValidDistance = float.MaxValue;
+        bool carDetectedInFront = false;
+
+        foreach (RaycastHit hit in hits)
+        {
+            if (hit.collider.transform.IsChildOf(this.transform) || hit.collider.transform == this.transform) continue;
+
+            // Check if the car is actually IN FRONT of us, not behind or to the side
+            Vector3 toOther = hit.collider.transform.position - transform.position;
+            float dotProduct = Vector3.Dot(transform.forward, toOther.normalized);
+            if (dotProduct < 0.5f) continue; // Not in front of us, ignore
+
+            if (hit.distance < closestValidDistance)
+            {
+                closestValidDistance = hit.distance;
+                carDetectedInFront = true;
+            }
+        }
+
+        if (carDetectedInFront)
+        {
+            Debug.Log($"Hits: {hits.Length}, carDetected: {carDetectedInFront}, speed: {currentSpeed}");
+            // Map the distance to a speed multiplier (0 when touching min stopping distance, 1 when at edge of detection)
+            float speedMultiplier = Mathf.InverseLerp(minStoppingDistance, detectionDistance, closestValidDistance);
+            currentSpeed = baseSpeed * speedMultiplier;
+
+            // Draw a RED line in the Scene view to show it is braking
+            Debug.DrawRay(rayOrigin, transform.forward * closestValidDistance, Color.red);
+        }
+        else
+        {
+            // Draw a GREEN line in the Scene view to show clear roads
+            Debug.DrawRay(rayOrigin, transform.forward * detectionDistance, Color.green);
+        }
     }
 
     private void MoveAlongSpline()
@@ -70,13 +120,13 @@ public class CarAgent : MonoBehaviour
 
         if (segmentLen < 0.1f) { Advance(); return; }
 
-        travelT += (baseSpeed * Time.deltaTime) / segmentLen;
+        travelT += (currentSpeed * Time.deltaTime) / segmentLen;
         float worldT = Mathf.Lerp(tStart, tEnd, Mathf.Clamp01(travelT));
 
         splineContainer.Evaluate(splineIdx, worldT, out float3 pos, out float3 fwd, out _);
 
         Vector3 forward = splineContainer.transform.TransformDirection((Vector3)fwd);
-        if (tEnd < tStart) forward = -forward; // Invert direction vector if moving backwards (1 -> 0)
+        if (tEnd < tStart) forward = -forward;
 
         ApplyPositionAndRotation(splineContainer.transform.TransformPoint((Vector3)pos), forward);
 
@@ -88,8 +138,7 @@ public class CarAgent : MonoBehaviour
         Vector3 dir = (currentTarget.transform.position - transform.position).normalized;
         Vector3 targetPos = currentTarget.transform.position;
 
-        // Apply lane offset during straight cross-spline adjustments
-        transform.position = Vector3.MoveTowards(transform.position, targetPos + (Vector3.Cross(Vector3.up, dir) * laneOffset), baseSpeed * Time.deltaTime);
+        transform.position = Vector3.MoveTowards(transform.position, targetPos + (Vector3.Cross(Vector3.up, dir) * laneOffset), currentSpeed * Time.deltaTime);
 
         if (dir.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(dir);
         if (Vector3.Distance(transform.position, targetPos) < 0.3f) Advance();
@@ -97,7 +146,7 @@ public class CarAgent : MonoBehaviour
 
     private void ApplyPositionAndRotation(Vector3 centerPos, Vector3 forward)
     {
-        // Cross product guarantees the car shifts right relative to its current movement direction
+        // Right-hand traffic offset
         Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
         transform.position = centerPos + (right * laneOffset);
         if (forward.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(forward);
@@ -111,7 +160,6 @@ public class CarAgent : MonoBehaviour
             currentTarget = currentPath[0];
             currentPath.RemoveAt(0);
 
-            // If next node shares the same spline, switch to curve-following mode
             if (from.splineIndex == currentTarget.splineIndex && from.splineIndex != -1)
             {
                 splineIdx = from.splineIndex;
@@ -133,7 +181,6 @@ public class CarAgent : MonoBehaviour
         isWaiting = true;
         yield return new WaitForSeconds(stopDuration);
 
-        // Turn around logic: flip state and find shortest path back
         headingToWork = !headingToWork;
         isWaiting = false;
         RecalculatePath();
@@ -155,7 +202,6 @@ public class CarAgent : MonoBehaviour
         var queue = new List<TrafficNode> { start };
         dist[start] = 0;
 
-        // Standard Dijkstra shortest path finder based on physical distance
         while (queue.Count > 0)
         {
             queue.Sort((a, b) => dist[a].CompareTo(dist[b]));

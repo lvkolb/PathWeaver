@@ -53,7 +53,7 @@ public class VehicleManager : MonoBehaviour
             {
                 agent.network = network;
                 agent.splineContainer = laneContainer;
-                agent.baseSpeed = Random.Range(8f, 12f);
+                agent.baseSpeed = Random.Range(0.5f, 1f);
 
                 // Assign distinct random start and end positions
                 TrafficNode startNode = network.allNodes[Random.Range(0, network.allNodes.Count)];

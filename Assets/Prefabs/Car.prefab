@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 5086754814679435732}
   - component: {fileID: 8188227056545266114}
   - component: {fileID: 4164672982840854994}
-  m_Layer: 7
+  m_Layer: 10
   m_Name: Car
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -163,7 +163,7 @@ TrailRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Time: 0.5
+  m_Time: 3
   m_PreviewTimeScale: 1
   m_Parameters:
     serializedVersion: 3
@@ -173,7 +173,7 @@ TrailRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0.5
-        value: 0.05
+        value: 0.4559372
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -236,9 +236,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d07b14faa8d6704ab16f282a2fffd83, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CarAgent
-  baseSpeed: 5
+  baseSpeed: 1
   stopDuration: 2
-  roadWidth: 0.02
+  laneOffset: 0.1
+  detectionDistance: 0.5
+  minStoppingDistance: 0.1
+  sphereRadius: 0.05
+  vehicleLayer:
+    serializedVersion: 2
+    m_Bits: 1024
   network: {fileID: 0}
   splineContainer: {fileID: 0}
   homeNode: {fileID: 0}

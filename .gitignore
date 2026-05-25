@@ -114,3 +114,8 @@ InitTestScene*.unity*
 # https://assetstore.unity.com/packages/2d/textures-materials/sky/allsky-free-10-sky-skybox-set-146014
 /[Aa]ssets/AllSkyFree/
 /[Aa]ssets/AllSkyFree.meta
+
+# Ignore Low Poly Tree Pack
+# https://assetstore.unity.com/packages/3d/vegetation/trees/low-poly-tree-pack-57866#content
+/[Aa]ssets/BrokenVector/
+/[Aa]ssets/BrokenVector.meta

@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 134813000398818306}
   - component: {fileID: 3282453174395131588}
-  - component: {fileID: 3285874417250081970}
+  - component: {fileID: 4184973971507088553}
   m_Layer: 0
   m_Name: Weaver
   m_TagString: Untagged
@@ -57,7 +57,7 @@ CapsuleCollider:
   m_Height: 2
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &3285874417250081970
+--- !u!114 &4184973971507088553
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -66,7 +66,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1239451527901233465}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: cfbc85988d92b5c4fb9a7823b78fa63f, type: 3}
+  m_Script: {fileID: 11500000, guid: d4919a567b006474baba4d4b9200e57b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Player
   xrCameraRig: {fileID: 0}

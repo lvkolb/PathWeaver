@@ -4,15 +4,12 @@ using UnityEngine.InputSystem;
 public class Player : MonoBehaviour
 {
 
-    [Header("XR Camera Rig Reference")]
-    public Transform xrCameraRig;
-    public float posY = 0f;
-
+    [Header("Reference")]
     public ComputerXRManager computerXRManager;
+    public Transform xrCameraRig;
     private bool XRisUsed;
-
     public Camera mainCamera;
-
+    public float posY = 0f;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {

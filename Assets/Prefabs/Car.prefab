@@ -244,7 +244,7 @@ MonoBehaviour:
   sphereRadius: 0.05
   vehicleLayer:
     serializedVersion: 2
-    m_Bits: 1024
+    m_Bits: 5120
   network: {fileID: 0}
   splineContainer: {fileID: 0}
   homeNode: {fileID: 0}

@@ -10,7 +10,6 @@ public class CarAgent : MonoBehaviour
     public float baseSpeed = 5f;
     public float stopDuration = 2f;
 
-    // Made laneOffset public so you can increase it. Try 0.5f or 1.0f depending on your car size!
     [Tooltip("Distance from the center of the spline to the center of the lane")]
     public float laneOffset = 0.1f;
 
@@ -30,6 +29,16 @@ public class CarAgent : MonoBehaviour
     public TrafficNode workNode;
     public bool headingToWork = true;
 
+    [Header("Audio Settings (Only for Collision/Braking)")]
+    [Tooltip("The AudioSource component used to play the braking/stopping sounds.")]
+    [SerializeField] private AudioSource audioSource;
+    [Tooltip("List of audio clips. The script will pick a random one when a car blocks the road.")]
+    [SerializeField] private List<AudioClip> stopSounds = new List<AudioClip>();
+    [Tooltip("How many seconds the car must be fully stopped before the sound triggers.")]
+    [SerializeField] private float audioDelayThreshold = 2f;
+    [Tooltip("Shows in real-time how long the car has been completely standing still due to a roadblock.")]
+    [SerializeField] private float timeStuck = 0f;
+
     private List<TrafficNode> currentPath = new List<TrafficNode>();
     public TrafficNode currentTarget;
 
@@ -40,6 +49,9 @@ public class CarAgent : MonoBehaviour
     private float tStart, tEnd;
     private bool isWaiting = false;
 
+    // Track audio state to prevent restarting the sound every single frame
+    private bool isSoundPlaying = false;
+
     public void InitializeAgent(TrafficNode start, TrafficNode destination)
     {
         homeNode = start;
@@ -48,22 +60,79 @@ public class CarAgent : MonoBehaviour
         if (network == null) network = Object.FindAnyObjectByType<TrafficNetwork>();
         if (splineContainer == null && network != null) splineContainer = network.splineContainer;
 
+        // Automatically assign AudioSource if left empty in the Inspector
+        if (audioSource == null) audioSource = GetComponent<AudioSource>();
+
+        // --- RANDOM AUDIO INITIALIZATION ONCE ---
+        // Pick a random sound from the list right at initialization and pre-assign it to the AudioSource
+        if (audioSource != null && stopSounds != null && stopSounds.Count > 0)
+        {
+            int randomIndex = UnityEngine.Random.Range(0, stopSounds.Count);
+            audioSource.clip = stopSounds[randomIndex];
+            audioSource.loop = true;
+        }
+
         transform.position = start.transform.position;
         headingToWork = true;
         isWaiting = false;
+        timeStuck = 0f;
 
         RecalculatePath();
     }
 
     void Update()
     {
-        if (currentTarget == null || isWaiting) return;
+        // SAFETY FIRST: If the car is naturally waiting at its destination or has no target,
+        // it is NOT in a traffic jam collision. Stop the collision sound immediately!
+        if (isWaiting || currentTarget == null)
+        {
+            timeStuck = 0f;
+            HandleStopAudio(false);
+            return;
+        }
 
         CalculateDynamicSpeed();
+
+        // THE ULTIMATE BACKUP FIX:
+        // If the collision script somehow glitched or the car is moving faster than light,
+        // but the sound engine is still trapped playing, force-kill the audio right here!
+        if (currentSpeed > 0.01f && isSoundPlaying)
+        {
+            timeStuck = 0f;
+            HandleStopAudio(false);
+        }
 
         if (useSpline) MoveAlongSpline();
         else MoveDirectly();
     }
+
+    /// <summary>
+    /// Safely manages state transitions to play or stop the braking/idle sound.
+    /// </summary>
+    private void HandleStopAudio(bool shouldPlay)
+    {
+        if (audioSource == null || audioSource.clip == null) return;
+
+        if (shouldPlay)
+        {
+            if (!isSoundPlaying)
+            {
+                isSoundPlaying = true;
+
+                // Play the sound that was already uniquely chosen at initialization
+                audioSource.Play();
+            }
+        }
+        else
+        {
+            if (isSoundPlaying)
+            {
+                isSoundPlaying = false;
+                audioSource.Stop();
+            }
+        }
+    }
+
     public void RemapFromSnapshot(TrafficNetwork net,
                                Vector3 homePos, Vector3 workPos,
                                Vector3 lastTargetPos, bool hadTarget,
@@ -79,8 +148,10 @@ public class CarAgent : MonoBehaviour
         currentPath.Clear();
         useSpline = false;
         isWaiting = false;
+        timeStuck = 0f;
         RecalculatePath();
     }
+
     private void CalculateDynamicSpeed()
     {
         currentSpeed = baseSpeed;
@@ -101,7 +172,7 @@ public class CarAgent : MonoBehaviour
             // Check if the car is actually IN FRONT of us, not behind or to the side
             Vector3 toOther = hit.collider.transform.position - transform.position;
             float dotProduct = Vector3.Dot(transform.forward, toOther.normalized);
-            if (dotProduct < 0.5f) continue; // Not in front of us, ignore
+            if (dotProduct < 0.5f) continue;
 
             if (hit.distance < closestValidDistance)
             {
@@ -119,11 +190,35 @@ public class CarAgent : MonoBehaviour
 
             // Draw a RED line in the Scene view to show it is braking
             Debug.DrawRay(rayOrigin, transform.forward * closestValidDistance, Color.red);
+
+            // --- COLLISION AUDIO TRIGGER ---
+            // If a car is detected and speed drops to zero (or near zero), play the sound
+            if (currentSpeed <= 0.01f)
+            {
+                // Accumulate the time the car has spent standing still
+                timeStuck += Time.deltaTime;
+
+                // Trigger playing the unique pre-initialized stop sound only if the threshold has been reached
+                if (timeStuck >= audioDelayThreshold)
+                {
+                    HandleStopAudio(true);
+                }
+            }
+            else
+            {
+                // Reset timer and turn off sound if the car is just braking but still crawling forward
+                timeStuck = 0f;
+                HandleStopAudio(false);
+            }
         }
         else
         {
             // Draw a GREEN line in the Scene view to show clear roads
             Debug.DrawRay(rayOrigin, transform.forward * detectionDistance, Color.green);
+
+            // No car in front -> clean roads -> reset timer and turn off sound immediately
+            timeStuck = 0f;
+            HandleStopAudio(false);
         }
     }
 
@@ -191,8 +286,10 @@ public class CarAgent : MonoBehaviour
         currentPath.Clear();
         useSpline = false;
         isWaiting = false;
+        timeStuck = 0f;
         RecalculatePath();
     }
+
     private void Advance()
     {
         if (currentPath.Count > 0)
@@ -224,6 +321,7 @@ public class CarAgent : MonoBehaviour
 
         headingToWork = !headingToWork;
         isWaiting = false;
+        timeStuck = 0f;
         RecalculatePath();
     }
 

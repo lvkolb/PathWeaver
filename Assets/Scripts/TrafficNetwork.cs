@@ -9,15 +9,16 @@ public class TrafficNetwork : MonoBehaviour
     public SplineContainer splineContainer;
 
     [Header("Generation Settings")]
+    public int intersectionSamples = 80;
     public float nodeSpacing = 2f;
     public float snapRadius = 0.5f;
-    public int intersectionSamples = 80;
 
     [HideInInspector] public List<TrafficNode> allNodes = new List<TrafficNode>();
 
     /// <summary>
     /// Wipes the existing network and generates a brand new path graph.
     /// </summary>
+    [ContextMenu("Generate network")]
     public void RebuildGraph()
     {
         foreach (var n in allNodes)
@@ -52,6 +53,17 @@ public class TrafficNetwork : MonoBehaviour
         Debug.Log($"Traffic Network Rebuilt: {allNodes.Count} nodes generated.");
     }
 
+    [ContextMenu("Clear network")]
+    public void ClearNetwork()
+    {
+        foreach (var n in allNodes)
+        {
+            if (n != null) DestroyImmediate(n.gameObject);
+        }
+        allNodes.Clear();
+        Debug.Log("Traffic Network deleted.");
+    }
+
     private void PlaceNodesOnSpline(int splineIdx)
     {
         var spline = splineContainer.Splines[splineIdx];
@@ -69,7 +81,15 @@ public class TrafficNetwork : MonoBehaviour
 
             TrafficNode node = FindNearbyNode(worldPos);
             if (node == null)
+            {
                 node = CreateNode($"Node_S{splineIdx}_{i}", worldPos, splineIdx, t);
+            }
+            else
+            {
+                // If a point from another spline already exists here (e.g. at T-junctions), 
+                // it is already marked as an intersection here!
+                node.nodeType = TrafficNode.NodeType.Intersection;
+            }
 
             if (prev != null)
             {
@@ -92,7 +112,15 @@ public class TrafficNetwork : MonoBehaviour
                 if (IntersectXZ(pA[i], pA[i + 1], pB[j], pB[j + 1], out float tSeg, out float uSeg))
                 {
                     Vector3 crossPos = Vector3.Lerp(pA[i], pA[i + 1], tSeg);
-                    if (FindNearbyNode(crossPos) != null) continue;
+
+                    // If there is already a node nearby, we convert it into a junction!
+                    TrafficNode existingNode = FindNearbyNode(crossPos);
+                    if (existingNode != null)
+                    {
+                        existingNode.nodeType = TrafficNode.NodeType.Intersection;
+                        existingNode.name = $"X_Converted_{existingNode.name}";
+                        continue;
+                    }
 
                     float tA = GetTAtFraction(sA, (i + tSeg) / intersectionSamples);
                     float tB = GetTAtFraction(sB, (j + uSeg) / intersectionSamples);
@@ -137,20 +165,14 @@ public class TrafficNetwork : MonoBehaviour
         TrafficNode node = go.AddComponent<TrafficNode>();
         node.splineIndex = sIdx;
         node.tValue = t;
+
+        // By default, every newly created node is initially a normal road!
+        node.nodeType = TrafficNode.NodeType.Road;
+
         allNodes.Add(node);
         return node;
     }
 
-    /*public TrafficNode FindNearbyNode(Vector3 pos)
-    {
-        foreach (var n in allNodes)
-            if (Vector3.Distance(n.transform.position, pos) < snapRadius) return n;
-        return null;
-    }*/
-    /// <summary>
-    /// Returns the nearest node to a world position within snapRadius.
-    /// Used by cars to remap stale node references after a rebuild.
-    /// </summary>
     public TrafficNode FindNearbyNode(Vector3 worldPos)
     {
         TrafficNode best = null;

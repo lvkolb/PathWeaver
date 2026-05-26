@@ -119,3 +119,7 @@ InitTestScene*.unity*
 # https://assetstore.unity.com/packages/3d/vegetation/trees/low-poly-tree-pack-57866#content
 /[Aa]ssets/BrokenVector/
 /[Aa]ssets/BrokenVector.meta
+
+# Textures
+/[Aa]ssets/Textures/Buildings/
+/[Aa]ssets/Textures/Buildings.meta

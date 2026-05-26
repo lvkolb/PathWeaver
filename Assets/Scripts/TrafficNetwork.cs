@@ -15,40 +15,29 @@ public class TrafficNetwork : MonoBehaviour
 
     [HideInInspector] public List<TrafficNode> allNodes = new List<TrafficNode>();
 
-    /// <summary>
-    /// Wipes the existing network and generates a brand new path graph.
-    /// </summary>
     [ContextMenu("Generate network")]
     public void RebuildGraph()
     {
-        foreach (var n in allNodes)
-            if (n != null) DestroyImmediate(n.gameObject);
-
+        // 1. Delete all
+        foreach (var n in allNodes) if (n != null) DestroyImmediate(n.gameObject);
         allNodes.Clear();
-        if (splineContainer == null) { Debug.LogError("RebuildGraph: splineContainer is null!"); return; }
-        if (splineContainer.Splines.Count == 0) { Debug.LogWarning("RebuildGraph: No splines in container yet."); return; }
 
-        // Log what we're working with
-        int validSplines = 0;
+        if (splineContainer == null || splineContainer.Splines.Count == 0) return;
+
+        // 2. Place all normal nodes on the splines
         for (int i = 0; i < splineContainer.Splines.Count; i++)
         {
-            float len = splineContainer.Splines[i].GetLength();
-            Debug.Log($"  Spline {i}: length={len:F2}, knots={splineContainer.Splines[i].Count}");
-            if (len > 0.1f) validSplines++;
-        }
-        Debug.Log($"RebuildGraph: {splineContainer.Splines.Count} splines found, {validSplines} with length > 0.1");
-
-        // Step 1: Bake nodes
-        for (int i = 0; i < splineContainer.Splines.Count; i++)
-        {
-            if (splineContainer.Splines[i].GetLength() > 0.1f) // ← skip zero-length splines
+            if (splineContainer.Splines[i].GetLength() > 0.1f)
                 PlaceNodesOnSpline(i);
         }
 
-        // Step 2: Intersections
+        // 3. Find all actual physical crossings and incorporate them
         for (int a = 0; a < splineContainer.Splines.Count; a++)
             for (int b = a + 1; b < splineContainer.Splines.Count; b++)
                 InsertCrossingNodes(a, b);
+
+        // 4. We correctly identify the types
+        PostProcessIntersectionTypes();
 
         Debug.Log($"Traffic Network Rebuilt: {allNodes.Count} nodes generated.");
     }
@@ -56,12 +45,56 @@ public class TrafficNetwork : MonoBehaviour
     [ContextMenu("Clear network")]
     public void ClearNetwork()
     {
-        foreach (var n in allNodes)
-        {
-            if (n != null) DestroyImmediate(n.gameObject);
-        }
+        foreach (var n in allNodes) if (n != null) DestroyImmediate(n.gameObject);
         allNodes.Clear();
-        Debug.Log("Traffic Network deleted.");
+    }
+
+    private void PostProcessIntersectionTypes()
+    {
+        // List of all detected junctions, so that we can then find their neighbours
+        List<TrafficNode> detectedIntersections = new List<TrafficNode>();
+
+        // PART 1: Find all the intersections
+        foreach (var node in allNodes)
+        {
+            if (node == null) continue;
+
+            // Every newly generated node starts out as a normal road
+            node.nodeType = TrafficNode.NodeType.Road;
+
+            // If the name starts with "X_" (intersection) OR the node has more than 2 connections
+            // OR another spline is snapped to it (name contains "Converted")
+            if (node.name.StartsWith("X_") || node.outgoing.Count > 2 || node.incoming.Count > 2)
+            {
+                node.nodeType = TrafficNode.NodeType.Intersection;
+                detectedIntersections.Add(node);
+            }
+        }
+
+        // PART 2: Find all the immediate neighbours of these junctions
+        foreach (var intersection in detectedIntersections)
+        {
+            // Iterate through all the nodes that this junction leads to
+            foreach (var neighbor in intersection.outgoing)
+            {
+                // Only change this if it's a normal road (we won't overwrite any other junctions!)
+                if (neighbor != null && neighbor.nodeType == TrafficNode.NodeType.Road)
+                {
+                    neighbor.nodeType = TrafficNode.NodeType.PreIntersection;
+                    if (!neighbor.name.StartsWith("PreIntersection_")) neighbor.name = $"PreIntersection_{neighbor.name}";
+                }
+            }
+
+            // Iterate through all the nodes leading to this junction
+            foreach (var neighbor in intersection.incoming)
+            {
+                if (neighbor != null && neighbor.nodeType == TrafficNode.NodeType.Road)
+                {
+                    neighbor.nodeType = TrafficNode.NodeType.PreIntersection;
+                    if (!neighbor.name.StartsWith("PreIntersection_")) neighbor.name = $"PreIntersection_{neighbor.name}";
+                }
+            }
+        }
     }
 
     private void PlaceNodesOnSpline(int splineIdx)
@@ -81,19 +114,11 @@ public class TrafficNetwork : MonoBehaviour
 
             TrafficNode node = FindNearbyNode(worldPos);
             if (node == null)
-            {
                 node = CreateNode($"Node_S{splineIdx}_{i}", worldPos, splineIdx, t);
-            }
-            else
-            {
-                // If a point from another spline already exists here (e.g. at T-junctions), 
-                // it is already marked as an intersection here!
-                node.nodeType = TrafficNode.NodeType.Intersection;
-            }
 
             if (prev != null)
             {
-                prev.ConnectTo(node); // Two-way traffic setup
+                prev.ConnectTo(node);
                 node.ConnectTo(prev);
             }
             prev = node;
@@ -113,23 +138,22 @@ public class TrafficNetwork : MonoBehaviour
                 {
                     Vector3 crossPos = Vector3.Lerp(pA[i], pA[i + 1], tSeg);
 
-                    // If there is already a node nearby, we convert it into a junction!
-                    TrafficNode existingNode = FindNearbyNode(crossPos);
-                    if (existingNode != null)
-                    {
-                        existingNode.nodeType = TrafficNode.NodeType.Intersection;
-                        existingNode.name = $"X_Converted_{existingNode.name}";
-                        continue;
-                    }
-
                     float tA = GetTAtFraction(sA, (i + tSeg) / intersectionSamples);
                     float tB = GetTAtFraction(sB, (j + uSeg) / intersectionSamples);
 
-                    TrafficNode crossNode = CreateNode($"X_S{sA}xS{sB}", crossPos, sA, tA);
-                    crossNode.nodeType = TrafficNode.NodeType.Intersection;
+                    TrafficNode crossNode = FindNearbyNode(crossPos);
 
-                    Stitch(crossNode, sA, tA);
-                    Stitch(crossNode, sB, tB);
+                    if (crossNode != null)
+                    {
+                        if (!crossNode.name.StartsWith("X_Converted_"))
+                            crossNode.name = $"X_Converted_{crossNode.name}";
+                    }
+                    else
+                    {
+                        crossNode = CreateNode($"X_S{sA}xS{sB}", crossPos, sA, tA);
+                        Stitch(crossNode, sA, tA);
+                        Stitch(crossNode, sB, tB);
+                    }
                 }
             }
         }
@@ -149,7 +173,6 @@ public class TrafficNetwork : MonoBehaviour
 
                 chain[i].ConnectTo(crossNode);
                 crossNode.ConnectTo(chain[i + 1]);
-
                 crossNode.ConnectTo(chain[i]);
                 chain[i + 1].ConnectTo(crossNode);
                 break;
@@ -165,10 +188,6 @@ public class TrafficNetwork : MonoBehaviour
         TrafficNode node = go.AddComponent<TrafficNode>();
         node.splineIndex = sIdx;
         node.tValue = t;
-
-        // By default, every newly created node is initially a normal road!
-        node.nodeType = TrafficNode.NodeType.Road;
-
         allNodes.Add(node);
         return node;
     }
@@ -180,11 +199,7 @@ public class TrafficNetwork : MonoBehaviour
         foreach (var n in allNodes)
         {
             float d = Vector3.Distance(n.transform.position, worldPos);
-            if (d < snapRadius && d < bestDist) // ← snapRadius guard restored
-            {
-                bestDist = d;
-                best = n;
-            }
+            if (d < snapRadius && d < bestDist) { bestDist = d; best = n; }
         }
         return best;
     }

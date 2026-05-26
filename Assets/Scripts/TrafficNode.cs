@@ -6,6 +6,7 @@ public class TrafficNode : MonoBehaviour
     public enum NodeType
     {
         Road,
+        PreIntersection, // Der neue Typ für die Punkte VOR der Kreuzung
         Intersection
     }
 
@@ -14,7 +15,7 @@ public class TrafficNode : MonoBehaviour
 
     [Header("Connections (One-Way)")]
     public List<TrafficNode> outgoing = new List<TrafficNode>();
-    [HideInInspector] public List<TrafficNode> incoming = new List<TrafficNode>();
+    public List<TrafficNode> incoming = new List<TrafficNode>();
 
     [Header("Spline Data")]
     public int splineIndex = -1;
@@ -51,8 +52,24 @@ public class TrafficNode : MonoBehaviour
     private void OnDrawGizmos()
     {
         // Color coding for clear visualization in the Scene View
-        Gizmos.color = (nodeType == NodeType.Intersection) ? Color.yellow : Color.cyan;
-        float radius = (nodeType == NodeType.Intersection) ? 0.03f : 0.015f;
+        if (nodeType == NodeType.Intersection)
+        {
+            Gizmos.color = Color.yellow;
+        }
+        else if (nodeType == NodeType.PreIntersection)
+        {
+            Gizmos.color = new Color(1f, 0.5f, 0f); // PreIntersection is orange
+        }
+        else
+        {
+            Gizmos.color = Color.cyan; // Normal roads are cyan
+        }
+
+        // Adjust size: intersection largest, PreIntersection medium, road normal
+        float radius = 0.015f;
+        if (nodeType == NodeType.Intersection) radius = 0.03f;
+        else if (nodeType == NodeType.PreIntersection) radius = 0.022f;
+
         Gizmos.DrawSphere(transform.position, radius);
 
         // Draw path connections with direction arrows

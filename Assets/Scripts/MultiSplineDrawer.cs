@@ -141,14 +141,28 @@ public class MultiSplineDrawer : MonoBehaviour
     /// This method holds the original hardcoded updating logic.
     /// It is registered as a permanent listener to onMouseUpEvent inside Awake().
     /// </summary>
+    /* private void DefaultNetworkAndVehicleUpdates()
+     {
+         // Notify the infrastructure network to bake new nodes
+         if (trafficNetwork == null) trafficNetwork = FindAnyObjectByType<TrafficNetwork>();
+         if (trafficNetwork != null) trafficNetwork.RebuildGraph();
+
+         // Force all vehicles to find potential shortcuts on the new road
+         if (vehicleManager == null) vehicleManager = FindAnyObjectByType<VehicleManager>();
+         if (vehicleManager != null) vehicleManager.RecalculateAllVehiclePaths();
+     }*/
     private void DefaultNetworkAndVehicleUpdates()
     {
-        // Notify the infrastructure network to bake new nodes
         if (trafficNetwork == null) trafficNetwork = FindAnyObjectByType<TrafficNetwork>();
+        if (vehicleManager == null) vehicleManager = FindAnyObjectByType<VehicleManager>();
+
+        // 1. Snapshot positions BEFORE nodes are destroyed
+        if (vehicleManager != null) vehicleManager.SnapshotVehiclePositions();
+
+        // 2. Rebuild — destroys and recreates all nodes
         if (trafficNetwork != null) trafficNetwork.RebuildGraph();
 
-        // Force all vehicles to find potential shortcuts on the new road
-        if (vehicleManager == null) vehicleManager = FindAnyObjectByType<VehicleManager>();
+        // 3. Remap cars using the saved positions, not the destroyed nodes
         if (vehicleManager != null) vehicleManager.RecalculateAllVehiclePaths();
     }
 

@@ -24,13 +24,27 @@ public class TrafficNetwork : MonoBehaviour
             if (n != null) DestroyImmediate(n.gameObject);
 
         allNodes.Clear();
-        if (splineContainer == null) return;
+        if (splineContainer == null) { Debug.LogError("RebuildGraph: splineContainer is null!"); return; }
+        if (splineContainer.Splines.Count == 0) { Debug.LogWarning("RebuildGraph: No splines in container yet."); return; }
 
-        // Step 1: Bake nodes down the center of each spline path
+        // Log what we're working with
+        int validSplines = 0;
         for (int i = 0; i < splineContainer.Splines.Count; i++)
-            PlaceNodesOnSpline(i);
+        {
+            float len = splineContainer.Splines[i].GetLength();
+            Debug.Log($"  Spline {i}: length={len:F2}, knots={splineContainer.Splines[i].Count}");
+            if (len > 0.1f) validSplines++;
+        }
+        Debug.Log($"RebuildGraph: {splineContainer.Splines.Count} splines found, {validSplines} with length > 0.1");
 
-        // Step 2: Scan for physical overlapping roads and create intersection nodes
+        // Step 1: Bake nodes
+        for (int i = 0; i < splineContainer.Splines.Count; i++)
+        {
+            if (splineContainer.Splines[i].GetLength() > 0.1f) // ← skip zero-length splines
+                PlaceNodesOnSpline(i);
+        }
+
+        // Step 2: Intersections
         for (int a = 0; a < splineContainer.Splines.Count; a++)
             for (int b = a + 1; b < splineContainer.Splines.Count; b++)
                 InsertCrossingNodes(a, b);
@@ -103,8 +117,13 @@ public class TrafficNetwork : MonoBehaviour
             if (chain[i].tValue <= t && chain[i + 1].tValue >= t)
             {
                 chain[i].DisconnectFrom(chain[i + 1]);
+                chain[i + 1].DisconnectFrom(chain[i]);
+
                 chain[i].ConnectTo(crossNode);
                 crossNode.ConnectTo(chain[i + 1]);
+
+                crossNode.ConnectTo(chain[i]);
+                chain[i + 1].ConnectTo(crossNode);
                 break;
             }
         }
@@ -122,11 +141,30 @@ public class TrafficNetwork : MonoBehaviour
         return node;
     }
 
-    public TrafficNode FindNearbyNode(Vector3 pos)
+    /*public TrafficNode FindNearbyNode(Vector3 pos)
     {
         foreach (var n in allNodes)
             if (Vector3.Distance(n.transform.position, pos) < snapRadius) return n;
         return null;
+    }*/
+    /// <summary>
+    /// Returns the nearest node to a world position within snapRadius.
+    /// Used by cars to remap stale node references after a rebuild.
+    /// </summary>
+    public TrafficNode FindNearbyNode(Vector3 worldPos)
+    {
+        TrafficNode best = null;
+        float bestDist = float.MaxValue;
+        foreach (var n in allNodes)
+        {
+            float d = Vector3.Distance(n.transform.position, worldPos);
+            if (d < snapRadius && d < bestDist) // ← snapRadius guard restored
+            {
+                bestDist = d;
+                best = n;
+            }
+        }
+        return best;
     }
 
     private Vector3[] SampleSpline(int idx, int res)

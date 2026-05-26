@@ -7,7 +7,7 @@ using System.Collections.Generic;
 public class CarAgent : MonoBehaviour
 {
     [Header("Movement Settings")]
-    public float baseSpeed = 1f;
+    public float baseSpeed = 5f;
     public float stopDuration = 2f;
 
     // Made laneOffset public so you can increase it. Try 0.5f or 1.0f depending on your car size!
@@ -15,9 +15,9 @@ public class CarAgent : MonoBehaviour
     public float laneOffset = 0.1f;
 
     [Header("Collision Avoidance")]
-    public float detectionDistance = 0.5f;
-    public float minStoppingDistance = 0.1f;
-    public float sphereRadius = 0.05f; // How "fat" the detection ray is
+    public float detectionDistance = 3f;
+    public float minStoppingDistance = 0.8f;
+    public float sphereRadius = 0.5f; // How "fat" the detection ray is
     public LayerMask vehicleLayer;
     private float currentSpeed;
 
@@ -28,10 +28,10 @@ public class CarAgent : MonoBehaviour
     [Header("Navigation Goals")]
     public TrafficNode homeNode;
     public TrafficNode workNode;
-    private bool headingToWork = true;
+    public bool headingToWork = true;
 
     private List<TrafficNode> currentPath = new List<TrafficNode>();
-    private TrafficNode currentTarget;
+    public TrafficNode currentTarget;
 
     // Internal Spline State tracking
     private bool useSpline = false;
@@ -64,7 +64,23 @@ public class CarAgent : MonoBehaviour
         if (useSpline) MoveAlongSpline();
         else MoveDirectly();
     }
+    public void RemapFromSnapshot(TrafficNetwork net,
+                               Vector3 homePos, Vector3 workPos,
+                               Vector3 lastTargetPos, bool hadTarget,
+                               bool wasHeadingToWork)
+    {
+        headingToWork = wasHeadingToWork;
 
+        homeNode = net.FindNearbyNode(homePos);
+        workNode = net.FindNearbyNode(workPos);
+        currentTarget = hadTarget ? net.FindNearbyNode(lastTargetPos)
+                                  : (headingToWork ? homeNode : workNode);
+
+        currentPath.Clear();
+        useSpline = false;
+        isWaiting = false;
+        RecalculatePath();
+    }
     private void CalculateDynamicSpeed()
     {
         currentSpeed = baseSpeed;
@@ -151,7 +167,32 @@ public class CarAgent : MonoBehaviour
         transform.position = centerPos + (right * laneOffset);
         if (forward.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(forward);
     }
+    /// <summary>
+    /// Called by VehicleManager after TrafficNetwork.RebuildGraph() destroys and recreates all nodes.
+    /// Remaps stale node references to the nearest live equivalents, then recalculates the path.
+    /// </summary>
+    public void RemapAfterRebuild(TrafficNetwork net)
+    {
+        // Cache world positions BEFORE references go stale
+        // (Destroyed Unity objects still return their last position)
+        if (homeNode != null)
+            homeNode = net.FindNearbyNode(homeNode.transform.position);
 
+        if (workNode != null)
+            workNode = net.FindNearbyNode(workNode.transform.position);
+
+        // currentTarget may be destroyed — snap to nearest live node from its last known pos
+        if (currentTarget != null)
+            currentTarget = net.FindNearbyNode(currentTarget.transform.position);
+        else
+            currentTarget = headingToWork ? homeNode : workNode;
+
+        // Clear the now-invalid path and recalculate fresh
+        currentPath.Clear();
+        useSpline = false;
+        isWaiting = false;
+        RecalculatePath();
+    }
     private void Advance()
     {
         if (currentPath.Count > 0)

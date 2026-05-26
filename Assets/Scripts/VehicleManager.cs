@@ -25,7 +25,42 @@ public class VehicleManager : MonoBehaviour
     {
         StartCoroutine(SpawnTrafficCoroutine());
     }
+    // Add this struct at the top of the class
+    private struct CarSnapshot
+    {
+        public CarAgent agent;
+        public Vector3 homePos;
+        public Vector3 workPos;
+        public Vector3 currentTargetPos;
+        public bool hadTarget;
+        public bool headingToWork;
+    }
 
+    private List<CarSnapshot> _snapshots = new List<CarSnapshot>();
+
+    /// <summary>
+    /// Call this BEFORE RebuildGraph(). Saves world positions while nodes still exist.
+    /// </summary>
+    public void SnapshotVehiclePositions()
+    {
+        _snapshots.Clear();
+        foreach (GameObject vehicle in activeVehicles)
+        {
+            if (vehicle == null) continue;
+            CarAgent agent = vehicle.GetComponent<CarAgent>();
+            if (agent == null) continue;
+
+            _snapshots.Add(new CarSnapshot
+            {
+                agent = agent,
+                homePos = agent.homeNode != null ? agent.homeNode.transform.position : agent.transform.position,
+                workPos = agent.workNode != null ? agent.workNode.transform.position : agent.transform.position,
+                currentTargetPos = agent.currentTarget != null ? agent.currentTarget.transform.position : agent.transform.position,
+                hadTarget = agent.currentTarget != null,
+                headingToWork = agent.headingToWork
+            });
+        }
+    }
     private IEnumerator SpawnTrafficCoroutine()
     {
         TrafficNetwork network = Object.FindAnyObjectByType<TrafficNetwork>();
@@ -37,7 +72,11 @@ public class VehicleManager : MonoBehaviour
             network.RebuildGraph();
         }
 
-        if (network.allNodes.Count < 2) { Debug.LogError("Network has fewer than 2 nodes!"); yield break; }
+        if (network.allNodes.Count < 2)
+        {
+            Debug.LogError("Network has fewer than 2 nodes! Draw some roads first, then spawn traffic.");
+            yield break;
+        }
         if (laneContainer == null) { Debug.LogError("No laneContainer assigned!"); yield break; }
 
         if (pathParent == null) pathParent = new GameObject("TrafficData").transform;
@@ -75,7 +114,7 @@ public class VehicleManager : MonoBehaviour
         }
     }
 
-    public void RecalculateAllVehiclePaths()
+    /*public void RecalculateAllVehiclePaths()
     {
         foreach (GameObject vehicle in activeVehicles)
         {
@@ -83,8 +122,24 @@ public class VehicleManager : MonoBehaviour
             CarAgent agent = vehicle.GetComponent<CarAgent>();
             if (agent != null) agent.RecalculatePath();
         }
-    }
+    }*/
+    /// <summary>
+    /// Call this AFTER RebuildGraph(). Restores cars using the cached positions.
+    /// </summary>
+    public void RecalculateAllVehiclePaths()
+    {
+        TrafficNetwork net = FindAnyObjectByType<TrafficNetwork>();
+        if (net == null) return;
 
+        foreach (var snap in _snapshots)
+        {
+            if (snap.agent == null) continue;
+            snap.agent.RemapFromSnapshot(net, snap.homePos, snap.workPos,
+                                         snap.currentTargetPos, snap.hadTarget,
+                                         snap.headingToWork);
+        }
+        _snapshots.Clear();
+    }
     [ContextMenu("Clear All Traffic")]
     public void ClearTraffic()
     {

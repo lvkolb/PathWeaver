@@ -34,8 +34,10 @@ public class CarAgent : MonoBehaviour
     [SerializeField] private AudioSource audioSource;
     [Tooltip("List of audio clips. The script will pick a random one when a car blocks the road.")]
     [SerializeField] private List<AudioClip> stopSounds = new List<AudioClip>();
-    [Tooltip("How many seconds the car must be fully stopped before the sound triggers.")]
+    [Tooltip("How many seconds the car must be fully stopped before the sound triggers for the FIRST time.")]
     [SerializeField] private float audioDelayThreshold = 2f;
+    [Tooltip("How many seconds to wait before repeating the sound if the car remains completely stopped.")]
+    [SerializeField] private float audioRepeatInterval = 2f;
     [Tooltip("Shows in real-time how long the car has been completely standing still due to a roadblock.")]
     [SerializeField] private float timeStuck = 0f;
 
@@ -49,8 +51,9 @@ public class CarAgent : MonoBehaviour
     private float tStart, tEnd;
     private bool isWaiting = false;
 
-    // Track audio state to prevent restarting the sound every single frame
-    private bool isSoundPlaying = false;
+    // Track audio state to manage repeating intervals properly
+    private bool isSoundActive = false;
+    private float soundRepeatTimer = 0f;
 
     public void InitializeAgent(TrafficNode start, TrafficNode destination)
     {
@@ -69,13 +72,17 @@ public class CarAgent : MonoBehaviour
         {
             int randomIndex = UnityEngine.Random.Range(0, stopSounds.Count);
             audioSource.clip = stopSounds[randomIndex];
-            audioSource.loop = true;
+
+            // Turn off the loop so we can control the repetition precisely!
+            audioSource.loop = false;
         }
 
         transform.position = start.transform.position;
         headingToWork = true;
         isWaiting = false;
         timeStuck = 0f;
+        soundRepeatTimer = 0f;
+        isSoundActive = false;
 
         RecalculatePath();
     }
@@ -87,6 +94,7 @@ public class CarAgent : MonoBehaviour
         if (isWaiting || currentTarget == null)
         {
             timeStuck = 0f;
+            soundRepeatTimer = 0f;
             HandleStopAudio(false);
             return;
         }
@@ -96,9 +104,10 @@ public class CarAgent : MonoBehaviour
         // THE ULTIMATE BACKUP FIX:
         // If the collision script somehow glitched or the car is moving faster than light,
         // but the sound engine is still trapped playing, force-kill the audio right here!
-        if (currentSpeed > 0.01f && isSoundPlaying)
+        if (currentSpeed > 0.01f && isSoundActive)
         {
             timeStuck = 0f;
+            soundRepeatTimer = 0f;
             HandleStopAudio(false);
         }
 
@@ -115,19 +124,31 @@ public class CarAgent : MonoBehaviour
 
         if (shouldPlay)
         {
-            if (!isSoundPlaying)
+            if (!isSoundActive)
             {
-                isSoundPlaying = true;
-
-                // Play the sound that was already uniquely chosen at initialization
+                isSoundActive = true;
                 audioSource.Play();
+                // Set the timer directly to the interval so that the next sound plays after X seconds
+                soundRepeatTimer = audioRepeatInterval;
+            }
+            else
+            {
+                // If the sound is to remain active, we count down the time until we play it again
+                soundRepeatTimer -= Time.deltaTime;
+                if (soundRepeatTimer <= 0f)
+                {
+                    // Play again (even if the previous sound is still playing or has already finished)
+                    audioSource.Play();
+                    soundRepeatTimer = audioRepeatInterval;
+                }
             }
         }
         else
         {
-            if (isSoundPlaying)
+            if (isSoundActive)
             {
-                isSoundPlaying = false;
+                isSoundActive = false;
+                soundRepeatTimer = 0f;
                 audioSource.Stop();
             }
         }
@@ -149,6 +170,8 @@ public class CarAgent : MonoBehaviour
         useSpline = false;
         isWaiting = false;
         timeStuck = 0f;
+        soundRepeatTimer = 0f;
+        isSoundActive = false;
         RecalculatePath();
     }
 
@@ -161,7 +184,7 @@ public class CarAgent : MonoBehaviour
 
         // Get EVERYTHING the sphere hits in front of the car
         RaycastHit[] hits = Physics.SphereCastAll(rayOrigin, sphereRadius, transform.forward, detectionDistance, vehicleLayer);
-        Debug.Log($"Total hits: {hits.Length}");
+
         float closestValidDistance = float.MaxValue;
         bool carDetectedInFront = false;
 
@@ -183,7 +206,6 @@ public class CarAgent : MonoBehaviour
 
         if (carDetectedInFront)
         {
-            Debug.Log($"Hits: {hits.Length}, carDetected: {carDetectedInFront}, speed: {currentSpeed}");
             // Map the distance to a speed multiplier (0 when touching min stopping distance, 1 when at edge of detection)
             float speedMultiplier = Mathf.InverseLerp(minStoppingDistance, detectionDistance, closestValidDistance);
             currentSpeed = baseSpeed * speedMultiplier;
@@ -208,6 +230,7 @@ public class CarAgent : MonoBehaviour
             {
                 // Reset timer and turn off sound if the car is just braking but still crawling forward
                 timeStuck = 0f;
+                soundRepeatTimer = 0f;
                 HandleStopAudio(false);
             }
         }
@@ -218,6 +241,7 @@ public class CarAgent : MonoBehaviour
 
             // No car in front -> clean roads -> reset timer and turn off sound immediately
             timeStuck = 0f;
+            soundRepeatTimer = 0f;
             HandleStopAudio(false);
         }
     }
@@ -287,6 +311,8 @@ public class CarAgent : MonoBehaviour
         useSpline = false;
         isWaiting = false;
         timeStuck = 0f;
+        soundRepeatTimer = 0f;
+        isSoundActive = false;
         RecalculatePath();
     }
 
@@ -322,6 +348,8 @@ public class CarAgent : MonoBehaviour
         headingToWork = !headingToWork;
         isWaiting = false;
         timeStuck = 0f;
+        soundRepeatTimer = 0f;
+        isSoundActive = false;
         RecalculatePath();
     }
 

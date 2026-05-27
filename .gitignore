@@ -123,3 +123,14 @@ InitTestScene*.unity*
 # Textures
 /[Aa]ssets/Textures/Buildings/
 /[Aa]ssets/Textures/Buildings.meta
+
+
+# Sounds (Link for downloading see Credits.md)
+/[Aa]ssets/Sounds/325506__listentonyboy__city-ambience-for-clean-loop.wav
+/[Aa]ssets/Sounds/325506__listentonyboy__city-ambience-for-clean-loop.wav.meta
+
+/[Aa]ssets/Sounds/soundscrate-a-new-day.wav
+/[Aa]ssets/Sounds/soundscrate-a-new-day.wav.meta
+
+/[Aa]ssets/Sounds/SoundEffects/CarHonks/
+/[Aa]ssets/Sounds/SoundEffects/CarHonks.meta

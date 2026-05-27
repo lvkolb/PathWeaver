@@ -140,7 +140,7 @@ public class VehicleManager : MonoBehaviour
         }
         _snapshots.Clear();
     }
-    [ContextMenu("Clear All Traffic")]
+    [ContextMenu("Clear Traffic")]
     public void ClearTraffic()
     {
         foreach (var v in activeVehicles)

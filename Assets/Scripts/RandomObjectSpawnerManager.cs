@@ -5,9 +5,23 @@ using Unity.Mathematics;
 
 public class RandomObjectSpawnerManager : MonoBehaviour
 {
+    // A custom class to pair a Prefab with its custom spawn weight configuration
+    [System.Serializable]
+    public class SpawnableItem
+    {
+        public GameObject prefab;
+        [Tooltip("The relative weight of this item. Higher weight means higher spawn chance.")]
+        public float weight = 1.0f;
+    }
+
     [Header("Prefabs & quantity")]
-    public List<GameObject> prefabsToSpawn = new List<GameObject>();
+    [Tooltip("Configure your prefabs and their individual spawn likelihood weights here. E.g. 20, 40, 60, 20")]
+    public List<SpawnableItem> prefabsToSpawn = new List<SpawnableItem>();
     public int amount = 100;
+
+    [Header("Rotation Settings")]
+    [Tooltip("If enabled, spawned objects will rotate randomly between 0 and 360 degrees around the Y axis.")]
+    public bool useRandomRotation = true;
 
     [Header("Road Settings")]
     private float roadWidth = 0.5f;
@@ -39,7 +53,6 @@ public class RandomObjectSpawnerManager : MonoBehaviour
         ValidateExistingBuildings();
     }
 
-
     [ContextMenu("Clear All Objects")]
     public void ClearAllObjects()
     {
@@ -57,7 +70,6 @@ public class RandomObjectSpawnerManager : MonoBehaviour
             }
         }
 
-        // Clear list
         spawnedObjects.Clear();
 
         // Safety check if running in editor mode to clean remaining orphan child transform objects
@@ -125,12 +137,10 @@ public class RandomObjectSpawnerManager : MonoBehaviour
         float halfRoadWidth = roadWidth * 0.5f;
 
         int buildingsToCreate = amount - spawnedObjects.Count;
-        System.Random rng = new System.Random();
 
         for (int i = 0; i < buildingsToCreate; i++)
         {
-            int randomIndex = rng.Next(0, prefabsToSpawn.Count);
-            GameObject selectedPrefab = prefabsToSpawn[randomIndex];
+            GameObject selectedPrefab = GetWeightedRandomPrefab();
             if (selectedPrefab == null) continue;
 
             BoxCollider col = selectedPrefab.GetComponent<BoxCollider>();
@@ -153,6 +163,15 @@ public class RandomObjectSpawnerManager : MonoBehaviour
             checkBoxExtents.z += spacingFromRoad;
             checkBoxExtents.y += 0.5f;
 
+            // Determine orientation beforehand based on the toggle setting
+            // Physics.CheckBox checking requires the same rotation for an accurate overlap check
+            Quaternion spawnRotation = Quaternion.identity;
+            if (useRandomRotation)
+            {
+                float randomYAngle = UnityEngine.Random.Range(0f, 360f);
+                spawnRotation = Quaternion.Euler(0f, randomYAngle, 0f);
+            }
+
             while (!validPosFound && attempts < 50)
             {
                 attempts++;
@@ -162,8 +181,8 @@ public class RandomObjectSpawnerManager : MonoBehaviour
 
                 if (IsPositionFarFromAllSplines(testPos, totalRequiredDistance))
                 {
-                    // Check for overlap collisions with objects tagged inside avoidanceLayers
-                    if (!Physics.CheckBox(testPos, checkBoxExtents, Quaternion.identity, avoidanceLayers))
+                    // Pass the spawnRotation into the CheckBox so the collision detection matches the final rotation
+                    if (!Physics.CheckBox(testPos, checkBoxExtents, spawnRotation, avoidanceLayers))
                     {
                         finalPos = testPos;
                         validPosFound = true;
@@ -173,13 +192,44 @@ public class RandomObjectSpawnerManager : MonoBehaviour
 
             if (validPosFound)
             {
-                // Instantiate at the discovered safe point with default rotation identity orientation
-                GameObject newBuilding = Instantiate(selectedPrefab, finalPos, Quaternion.identity, transform);
+                // Instantiate the object using the custom spawnRotation instead of Quaternion.identity
+                GameObject newBuilding = Instantiate(selectedPrefab, finalPos, spawnRotation, transform);
                 spawnedObjects.Add(newBuilding);
             }
         }
 
         Debug.Log($"<color=lime>Done!</color> Random objects created. Current setup size: {spawnedObjects.Count}");
+    }
+
+    private GameObject GetWeightedRandomPrefab()
+    {
+        float totalWeight = 0f;
+
+        foreach (var item in prefabsToSpawn)
+        {
+            if (item.prefab != null && item.weight > 0f)
+            {
+                totalWeight += item.weight;
+            }
+        }
+
+        if (totalWeight <= 0f) return null;
+
+        float randomRoll = UnityEngine.Random.Range(0f, totalWeight);
+        float currentWeightTracker = 0f;
+
+        foreach (var item in prefabsToSpawn)
+        {
+            if (item.prefab == null || item.weight <= 0f) continue;
+
+            currentWeightTracker += item.weight;
+            if (randomRoll <= currentWeightTracker)
+            {
+                return item.prefab;
+            }
+        }
+
+        return null;
     }
 
     private bool IsPositionFarFromAllSplines(Vector3 worldPos, float requiredDist)

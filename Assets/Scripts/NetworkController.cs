@@ -48,22 +48,18 @@ public class NetworkController : MonoBehaviour
 
     public void Join()
     {
-        string targetIP = "127.0.0.1";
-
-        if (_ipTextField != null && !string.IsNullOrEmpty(_ipTextField.value))
-        {
-            targetIP = _ipTextField.value.Trim();
-        }
+        // HARDCODED TEST: Replace the numbers below with your exact Host IPv4 address
+        string targetIP = "10.75.184.73"; // <-- HIER DEINE ECHTE HOST-IP EINTRAGEN!
 
         if (_transport != null)
         {
-            NetworkManager.Singleton.Shutdown(); // Clean up ghost connections
+            NetworkManager.Singleton.Shutdown();
             _transport.ConnectionData.Address = targetIP;
-            Debug.Log($"[Netcode] Clicked: Client. Targeting Host IP: {targetIP} on Port: {_transport.ConnectionData.Port}");
+            Debug.Log($"[TEST] Forcing connection to hardcoded IP: {_transport.ConnectionData.Address}");
         }
 
-        NetworkManager.Singleton.StartClient();
-        HideUI();
+        bool success = NetworkManager.Singleton.StartClient();
+        Debug.Log($"[TEST] StartClient called. Success status: {success}");
     }
 
     private void HideUI()

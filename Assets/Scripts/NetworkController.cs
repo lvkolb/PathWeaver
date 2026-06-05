@@ -66,4 +66,36 @@ public class NetworkController : MonoBehaviour
     {
         if (_ui != null) _ui.style.display = DisplayStyle.None;
     }
+
+    void Start()
+    {
+        // Subscribe to connection events to see what happens under the hood
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Unsubscribe to avoid memory leaks
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnected;
+        }
+    }
+
+    private void OnClientConnected(ulong clientId)
+    {
+        // This will fire on BOTH host and client if the connection succeeds!
+        Debug.Log($"[NETCODE INFO] Client Connected successfully! ID: {clientId}");
+    }
+
+    private void OnClientDisconnected(ulong clientId)
+    {
+        // If the handshake fails or times out, this will fire
+        Debug.Log($"[NETCODE INFO] Client Disconnected/Failed to connect. ID: {clientId}");
+    }
 }

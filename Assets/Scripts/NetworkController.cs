@@ -5,66 +5,71 @@ using Unity.Netcode.Transports.UTP;
 
 public class NetworkController : MonoBehaviour
 {
-    private VisualElement _ui;
-    private Button _hostButton;
-    private Button _clientButton;
-    private TextField _ipTextField;
+    private VisualElement ui;
+    private Button hostButton;
+    private Button clientButton;
 
-    private UnityTransport _transport;
+    private UnityTransport transport;
 
     private void Awake()
     {
-        _ui = GetComponent<UIDocument>().rootVisualElement;
+        ui = GetComponent<UIDocument>().rootVisualElement;
 
         if (NetworkManager.Singleton != null)
         {
-            _transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+            transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
         }
     }
 
     private void OnEnable()
     {
-        _hostButton = _ui.Q<Button>("host");
-        _hostButton.clicked += Create;
+        hostButton = ui.Q<Button>("host");
+        if (hostButton != null) hostButton.clicked += Create;
 
-        _clientButton = _ui.Q<Button>("client");
-        _clientButton.clicked += Join;
-
-        _ipTextField = _ui.Q<TextField>("ip-field");
+        clientButton = ui.Q<Button>("client");
+        if (clientButton != null) clientButton.clicked += Join;
     }
 
     private void OnDisable()
     {
-        if (_hostButton != null) _hostButton.clicked -= Create;
-        if (_clientButton != null) _clientButton.clicked -= Join;
+        if (hostButton != null) hostButton.clicked -= Create;
+        if (clientButton != null) clientButton.clicked -= Join;
     }
 
     public void Create()
     {
-        Debug.Log("[Netcode] Clicked: Host. Starting server...");
-        NetworkManager.Singleton.StartHost();
-        HideUI();
+
+        Debug.Log($"[Netcode] Clicked: Host. Starting server...");
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.StartHost();
+            HideUI();
+        }
     }
 
     public void Join()
     {
-        // HARDCODED TEST: Replace the numbers below with your exact Host IPv4 address
-        string targetIP = "10.75.184.73"; // <-- HIER DEINE ECHTE HOST-IP EINTRAGEN!
-
-        if (_transport != null)
+        if (NetworkManager.Singleton != null && transport != null)
         {
             NetworkManager.Singleton.Shutdown();
-            _transport.ConnectionData.Address = targetIP;
-            Debug.Log($"[TEST] Forcing connection to hardcoded IP: {_transport.ConnectionData.Address}");
-        }
 
-        bool success = NetworkManager.Singleton.StartClient();
-        Debug.Log($"[TEST] StartClient called. Success status: {success}");
+            // Reads the IP address that is currently configured in the UnityTransport inspector fields
+            string targetIP = transport.ConnectionData.Address;
+            Debug.Log($"[Netcode] Connecting to pre-configured Transport IP: {targetIP}");
+
+            bool success = NetworkManager.Singleton.StartClient();
+            Debug.Log($"[Netcode] StartClient called. Success status: {success}");
+
+            if (success)
+            {
+                HideUI();
+            }
+        }
     }
 
     private void HideUI()
     {
-        if (_ui != null) _ui.style.display = DisplayStyle.None;
+        if (ui != null) ui.style.display = DisplayStyle.None;
     }
 
     void Start()
@@ -89,13 +94,11 @@ public class NetworkController : MonoBehaviour
 
     private void OnClientConnected(ulong clientId)
     {
-        // This will fire on BOTH host and client if the connection succeeds!
         Debug.Log($"[NETCODE INFO] Client Connected successfully! ID: {clientId}");
     }
 
     private void OnClientDisconnected(ulong clientId)
     {
-        // If the handshake fails or times out, this will fire
         Debug.Log($"[NETCODE INFO] Client Disconnected/Failed to connect. ID: {clientId}");
     }
 }

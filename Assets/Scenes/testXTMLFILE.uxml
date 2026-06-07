@@ -1,5 +1,4 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
-    <ui:TextField label="ip" placeholder-text="add ip here" name="ip-field" value="10.75.184.73" style="font-size: 132px;"/>
     <ui:Button text="Start Host" name="host" style="height: 243px; width: 259px; font-size: 45px;"/>
     <ui:Button text="Cleint" name="client" style="height: 243px; width: 259px; background-color: rgb(67, 183, 122); font-size: 45px;"/>
 </ui:UXML>

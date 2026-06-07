@@ -1,4 +1,4 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <ui:Button text="Start Host" name="host" style="height: 243px; width: 259px; font-size: 45px;"/>
-    <ui:Button text="Cleint" name="client" style="height: 243px; width: 259px; background-color: rgb(67, 183, 122); font-size: 45px;"/>
+    <ui:Button text="Cleint" name="client" style="height: 243px; width: 259px; background-color: rgb(188, 188, 188); font-size: 45px;"/>
 </ui:UXML>

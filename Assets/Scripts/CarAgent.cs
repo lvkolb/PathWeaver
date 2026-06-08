@@ -55,6 +55,7 @@ public class CarAgent : MonoBehaviour
     private bool isSoundActive = false;
     private float soundRepeatTimer = 0f;
 
+    public System.Action OnTripCycleCompleted;
     public void InitializeAgent(TrafficNode start, TrafficNode destination)
     {
         homeNode = start;
@@ -286,6 +287,7 @@ public class CarAgent : MonoBehaviour
         transform.position = centerPos + (right * laneOffset);
         if (forward.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(forward);
     }
+
     /// <summary>
     /// Called by VehicleManager after TrafficNetwork.RebuildGraph() destroys and recreates all nodes.
     /// Remaps stale node references to the nearest live equivalents, then recalculates the path.
@@ -316,18 +318,13 @@ public class CarAgent : MonoBehaviour
         RecalculatePath();
     }
 
-        // Clear the now-invalid path and recalculate fresh
-        currentPath.Clear();
-        useSpline = false;
-        isWaiting = false;
-        RecalculatePath();
-    }
     private void Advance()
     {
         if (currentPath.Count > 0)
         {
             TrafficNode from = currentTarget != null ? currentTarget : (headingToWork ? homeNode : workNode);
             currentTarget = currentPath[0];
+            if (currentTarget != null) currentTarget.wasVisited = true;
             currentPath.RemoveAt(0);
 
             if (from.splineIndex == currentTarget.splineIndex && from.splineIndex != -1)
@@ -342,6 +339,7 @@ public class CarAgent : MonoBehaviour
         }
         else
         {
+            OnTripCycleCompleted?.Invoke();
             StartCoroutine(WaitAndReturn());
         }
     }

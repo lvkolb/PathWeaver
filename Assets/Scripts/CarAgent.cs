@@ -316,6 +316,12 @@ public class CarAgent : MonoBehaviour
         RecalculatePath();
     }
 
+        // Clear the now-invalid path and recalculate fresh
+        currentPath.Clear();
+        useSpline = false;
+        isWaiting = false;
+        RecalculatePath();
+    }
     private void Advance()
     {
         if (currentPath.Count > 0)

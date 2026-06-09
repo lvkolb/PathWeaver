@@ -105,6 +105,12 @@ InitTestScene*.unity*
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
 
+
+
+# Blocks
+/[Aa]ssets/Blocks
+/[Aa]ssets/Blocks.meta
+
 # Ignore SimplePoly City - Low Poly Assets
 # https://assetstore.unity.com/packages/3d/environments/simplepoly-city-low-poly-assets-58899
 /[Aa]ssets/SimplePoly City - Low Poly Assets/

@@ -120,6 +120,11 @@ InitTestScene*.unity*
 /[Aa]ssets/BrokenVector/
 /[Aa]ssets/BrokenVector.meta
 
+# Ignore Low Poly Stones
+# https://assetstore.unity.com/packages/3d/props/low-poly-stones-298380
+/[Aa]ssets/Low Poly Stones/
+/[Aa]ssets/Low Poly Stones.meta
+
 # Textures
 /[Aa]ssets/Textures/Buildings/
 /[Aa]ssets/Textures/Buildings.meta

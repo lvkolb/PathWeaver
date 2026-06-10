@@ -134,3 +134,8 @@ InitTestScene*.unity*
 
 /[Aa]ssets/Sounds/SoundEffects/CarHonks/
 /[Aa]ssets/Sounds/SoundEffects/CarHonks.meta
+
+
+# Multiplayer Blocks
+/[Aa]ssets/Blocks/
+/[Aa]ssets/Blocks.meta

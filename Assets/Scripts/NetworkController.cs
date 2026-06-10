@@ -1,34 +1,25 @@
 using System;
 using UnityEngine;
-using UnityEngine.UIElements;
+using UnityEngine.UI; // Required for standard Canvas Buttons
+using TMPro;          // Required for TextMeshPro InputFields and Labels
 using Unity.Netcode;
 using Unity.Services.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Multiplayer;
 
-public class NetworkController : MonoBehaviour
+public class NetworkControllerCanvas : MonoBehaviour
 {
-    private VisualElement _ui;
-    private Button _hostButton;
-    private Button _clientButton;
-    private TextField _joinCodeInput;
-    private Label _codeDisplayLabel;
-
-    private void Awake()
-    {
-        _ui = GetComponent<UIDocument>().rootVisualElement;
-    }
+    [Header("UI Canvas References")]
+    [SerializeField] private Button hostButton;
+    [SerializeField] private Button clientButton;
+    [SerializeField] private TMP_InputField joinCodeInput;
+    [SerializeField] private TMP_Text codeDisplayLabel;
 
     private async void Start()
     {
-        // Setup simple UI hooks
-        _hostButton = _ui.Q<Button>("host");
-        _clientButton = _ui.Q<Button>("client");
-        _joinCodeInput = _ui.Q<TextField>("joinCodeInput");
-        _codeDisplayLabel = _ui.Q<Label>("codeDisplay");
-
-        if (_hostButton != null) _hostButton.clicked += Create;
-        if (_clientButton != null) _clientButton.clicked += Join;
+        // Register button click events (uGUI syntax)
+        if (hostButton != null) hostButton.onClick.AddListener(Create);
+        if (clientButton != null) clientButton.onClick.AddListener(Join);
 
         // Turn off buttons while initializing services
         SetUIInteractable(false);
@@ -53,19 +44,20 @@ public class NetworkController : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"[Netcode] Initialization failed: {e.Message}");
-            if (_codeDisplayLabel != null) _codeDisplayLabel.text = "Error starting Services.";
+            if (codeDisplayLabel != null) codeDisplayLabel.text = "Error starting Services.";
         }
     }
 
     private void OnDisable()
     {
-        if (_hostButton != null) _hostButton.clicked -= Create;
-        if (_clientButton != null) _clientButton.clicked -= Join;
+        // Unregister events to prevent memory leaks
+        if (hostButton != null) hostButton.onClick.RemoveListener(Create);
+        if (clientButton != null) clientButton.onClick.RemoveListener(Join);
     }
 
     public async void Create()
     {
-        if (_codeDisplayLabel != null) _codeDisplayLabel.text = "Creating session...";
+        if (codeDisplayLabel != null) codeDisplayLabel.text = "Creating session...";
 
         try
         {
@@ -76,27 +68,27 @@ public class NetworkController : MonoBehaviour
             var session = await MultiplayerService.Instance.CreateSessionAsync(options);
 
             Debug.Log($"[Netcode] Session created! Code: {session.Code}");
-            if (_codeDisplayLabel != null) _codeDisplayLabel.text = $"Join Code: {session.Code}";
+            if (codeDisplayLabel != null) codeDisplayLabel.text = $"Join Code: {session.Code}";
         }
         catch (Exception e)
         {
             Debug.LogError($"[Netcode] Create Session failed: {e.Message}");
-            if (_codeDisplayLabel != null) _codeDisplayLabel.text = "Failed to create room.";
+            if (codeDisplayLabel != null) codeDisplayLabel.text = "Failed to create room.";
         }
     }
 
     public async void Join()
     {
-        if (_joinCodeInput == null) return;
-        string code = _joinCodeInput.value.Trim();
+        if (joinCodeInput == null) return;
+        string code = joinCodeInput.text.Trim();
 
         if (string.IsNullOrEmpty(code) || code.Length != 6)
         {
-            if (_codeDisplayLabel != null) _codeDisplayLabel.text = "Enter a 6-digit code!";
+            if (codeDisplayLabel != null) codeDisplayLabel.text = "Enter a 6-digit code!";
             return;
         }
 
-        if (_codeDisplayLabel != null) _codeDisplayLabel.text = "Joining session...";
+        if (codeDisplayLabel != null) codeDisplayLabel.text = "Joining session...";
 
         try
         {
@@ -104,20 +96,19 @@ public class NetworkController : MonoBehaviour
             var session = await MultiplayerService.Instance.JoinSessionByCodeAsync(code);
 
             Debug.Log("[Netcode] Successfully joined via Relay!");
-            if (_codeDisplayLabel != null) _codeDisplayLabel.text = $"Joined Room: {code}";
+            if (codeDisplayLabel != null) codeDisplayLabel.text = $"Joined Room: {code}";
         }
         catch (Exception e)
         {
             Debug.LogError($"[Netcode] Join Session failed: {e.Message}");
-            if (_codeDisplayLabel != null) _codeDisplayLabel.text = "Failed to join.";
+            if (codeDisplayLabel != null) codeDisplayLabel.text = "Failed to join.";
         }
     }
 
-    // FIXED: Added the missing helper method back into the script context
     private void SetUIInteractable(bool state)
     {
-        if (_hostButton != null) _hostButton.SetEnabled(state);
-        if (_clientButton != null) _clientButton.SetEnabled(state);
-        if (_joinCodeInput != null) _joinCodeInput.SetEnabled(state);
+        if (hostButton != null) hostButton.interactable = state;
+        if (clientButton != null) clientButton.interactable = state;
+        if (joinCodeInput != null) joinCodeInput.interactable = state;
     }
 }

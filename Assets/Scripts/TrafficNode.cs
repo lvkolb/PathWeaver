@@ -24,7 +24,8 @@ public class TrafficNode : MonoBehaviour
     [Header("Gizmo Arrow Settings")]
     [SerializeField] private float arrowWidth = 0.01f;
     [SerializeField] private float arrowLength = 0.015f;
-
+    // Add this property inside TrafficNode.cs
+    [HideInInspector] public bool wasVisited = false;
     /// <summary>
     /// Establishes a synchronized one-way connection to a target node.
     /// </summary>

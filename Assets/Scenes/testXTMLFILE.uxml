@@ -1,6 +1,0 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
-    <ui:Label text="Label" name="codeDisplay" style="font-size: 118px;"/>
-    <ui:TextField label="Enter Code" placeholder-text="filler text" name="joinCodeInput" style="font-size: 124px; height: 180px; width: 808px;"/>
-    <ui:Button text="Start Host" name="host" style="height: 243px; width: 259px; font-size: 45px;"/>
-    <ui:Button text="Start &#10;Client" name="client" style="height: 243px; width: 259px; font-size: 45px;"/>
-</ui:UXML>

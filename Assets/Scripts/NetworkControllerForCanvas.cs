@@ -7,7 +7,7 @@ using Unity.Services.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Multiplayer;
 
-public class NetworkControllerCanvas : MonoBehaviour
+public class NetworkControllerForCanvas : MonoBehaviour
 {
     [Header("UI Canvas References")]
     [SerializeField] private Button hostButton;

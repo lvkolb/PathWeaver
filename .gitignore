@@ -122,12 +122,22 @@ InitTestScene*.unity*
 /[Aa]ssets/BrokenVector/
 /[Aa]ssets/BrokenVector.meta
 
+# Ignore Trees and Rocks - Low Poly Pack: TinyNature
+# https://assetstore.unity.com/packages/3d/environments/landscapes/trees-and-rocks-low-poly-pack-tinynature-130107
+/[Aa]ssets/EmaceArt/
+/[Aa]ssets/EmaceArt.meta
+
+# Ignore Low Poly Wind
+# https://assetstore.unity.com/packages/vfx/shaders/low-poly-wind-182586
+/[Aa]ssets/Nicrom/
+/[Aa]ssets/Nicrom.meta
+
 # Ignore Low Poly Stones
 # https://assetstore.unity.com/packages/3d/props/low-poly-stones-298380
 /[Aa]ssets/Low Poly Stones/
 /[Aa]ssets/Low Poly Stones.meta
 
-# Textures
+# Textures for Buildings
 /[Aa]ssets/Textures/Buildings/
 /[Aa]ssets/Textures/Buildings.meta
 
@@ -143,6 +153,6 @@ InitTestScene*.unity*
 /[Aa]ssets/Sounds/SoundEffects/CarHonks.meta
 
 
-# Multiplayer Blocks
+# Blocks Multiplayer Services
 /[Aa]ssets/Blocks/
 /[Aa]ssets/Blocks.meta

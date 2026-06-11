@@ -9,9 +9,17 @@ public class RandomObjectSpawnerManager : MonoBehaviour
     [System.Serializable]
     public class SpawnableItem
     {
+        // Unity automatically uses the first string field it finds as the element title in the list.
+        [HideInInspector] public string prefabName;
+
         public GameObject prefab;
         [Tooltip("The relative weight of this item. Higher weight means higher spawn chance.")]
         public float weight = 1.0f;
+
+        public void UpdateTitle()
+        {
+            prefabName = prefab != null ? prefab.name : "None (Prefab)";
+        }
     }
 
     [Header("Prefabs & quantity")]
@@ -37,6 +45,16 @@ public class RandomObjectSpawnerManager : MonoBehaviour
     public Transform areaObject;
 
     private List<GameObject> spawnedObjects = new List<GameObject>();
+
+    // Automatically triggered whenever values change in the inspector
+    private void OnValidate()
+    {
+        if (prefabsToSpawn == null) return;
+        foreach (var item in prefabsToSpawn)
+        {
+            if (item != null) item.UpdateTitle();
+        }
+    }
 
     public void Start()
     {

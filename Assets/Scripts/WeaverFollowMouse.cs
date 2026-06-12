@@ -1,32 +1,22 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class Player : MonoBehaviour
+public class WeaverFollowMouse : MonoBehaviour
 {
 
-    [Header("Reference")]
-    public ComputerXRManager computerXRManager;
-    public Transform xrCameraRig;
-    private bool XRisUsed;
+
     public Camera mainCamera;
     public float posY = 0f;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-        XRisUsed = computerXRManager.useXR;
     }
-
     // Update is called once per frame
     void Update()
     {
-        if (XRisUsed)
-        {
-            XRUpdate();
-        }
-        else
-        {
-            mouseUpdate();
-        }
+
+        mouseUpdate();
+
     }
 
     private void mouseUpdate()
@@ -50,20 +40,4 @@ public class Player : MonoBehaviour
         }
     }
 
-
-    private void XRUpdate()
-    {
-        if (xrCameraRig == null)
-        {
-            Debug.Log("No camera rig set. Please set a camera rig");
-            return;
-        }
-
-        float posX = xrCameraRig.position.x;
-        float posZ = xrCameraRig.position.z;
-
-        Vector3 currentPos = new(posX, posY, posZ);
-
-        this.transform.position = currentPos;
-    }
 }

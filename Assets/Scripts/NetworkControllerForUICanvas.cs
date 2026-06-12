@@ -7,9 +7,10 @@ using Unity.Services.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Multiplayer;
 
-public class NetworkControllerForCanvas : MonoBehaviour
+public class NetworkControllerForUICanvas : MonoBehaviour
 {
     [Header("UI Canvas References")]
+    [SerializeField] private GameObject uiPanel; // The main UI panel containing the connection controls
     [SerializeField] private Button hostButton;
     [SerializeField] private Button clientButton;
     [SerializeField] private TMP_InputField joinCodeInput;
@@ -69,6 +70,9 @@ public class NetworkControllerForCanvas : MonoBehaviour
 
             Debug.Log($"[Netcode] Session created! Code: {session.Code}");
             if (codeDisplayLabel != null) codeDisplayLabel.text = $"Join Code: {session.Code}";
+
+            // Hide the UI since the session was successfully created
+            HideUI();
         }
         catch (Exception e)
         {
@@ -97,6 +101,9 @@ public class NetworkControllerForCanvas : MonoBehaviour
 
             Debug.Log("[Netcode] Successfully joined via Relay!");
             if (codeDisplayLabel != null) codeDisplayLabel.text = $"Joined Room: {code}";
+
+            // Hide the UI since the session was successfully joined
+            HideUI();
         }
         catch (Exception e)
         {
@@ -110,5 +117,13 @@ public class NetworkControllerForCanvas : MonoBehaviour
         if (hostButton != null) hostButton.interactable = state;
         if (clientButton != null) clientButton.interactable = state;
         if (joinCodeInput != null) joinCodeInput.interactable = state;
+    }
+
+    private void HideUI()
+    {
+        if (uiPanel != null)
+        {
+            uiPanel.SetActive(false);
+        }
     }
 }

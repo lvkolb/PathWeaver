@@ -17,7 +17,7 @@ GameObject:
   - component: {fileID: 5321836014839923207}
   m_Layer: 10
   m_Name: Car
-  m_TagString: Untagged
+  m_TagString: Vehicle
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -257,6 +257,7 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 30a9b24ff4cdec64186bf0e0ec5b0579, type: 3}
   - {fileID: 8300000, guid: a5a1af1d3674c9d4cab62da51fada9cb, type: 3}
   audioDelayThreshold: 3
+  audioRepeatInterval: 2
   timeStuck: 0
   currentTarget: {fileID: 0}
 --- !u!82 &5321836014839923207

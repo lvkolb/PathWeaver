@@ -105,11 +105,7 @@ InitTestScene*.unity*
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
 
-
-
-# Blocks
-/[Aa]ssets/Blocks
-/[Aa]ssets/Blocks.meta
+## Assets
 
 # Ignore SimplePoly City - Low Poly Assets
 # https://assetstore.unity.com/packages/3d/environments/simplepoly-city-low-poly-assets-58899
@@ -126,12 +122,27 @@ InitTestScene*.unity*
 /[Aa]ssets/BrokenVector/
 /[Aa]ssets/BrokenVector.meta
 
-# Textures
+# Ignore Trees and Rocks - Low Poly Pack: TinyNature
+# https://assetstore.unity.com/packages/3d/environments/landscapes/trees-and-rocks-low-poly-pack-tinynature-130107
+/[Aa]ssets/EmaceArt/
+/[Aa]ssets/EmaceArt.meta
+
+# Ignore Low Poly Wind
+# https://assetstore.unity.com/packages/vfx/shaders/low-poly-wind-182586
+/[Aa]ssets/Nicrom/
+/[Aa]ssets/Nicrom.meta
+
+# Ignore Low Poly Stones
+# https://assetstore.unity.com/packages/3d/props/low-poly-stones-298380
+/[Aa]ssets/Low Poly Stones/
+/[Aa]ssets/Low Poly Stones.meta
+
+# Textures for Buildings
 /[Aa]ssets/Textures/Buildings/
 /[Aa]ssets/Textures/Buildings.meta
 
 
-# Sounds (Link for downloading see Credits.md)
+## Sounds (Link for downloading see Credits.md)
 /[Aa]ssets/Sounds/325506__listentonyboy__city-ambience-for-clean-loop.wav
 /[Aa]ssets/Sounds/325506__listentonyboy__city-ambience-for-clean-loop.wav.meta
 
@@ -140,3 +151,8 @@ InitTestScene*.unity*
 
 /[Aa]ssets/Sounds/SoundEffects/CarHonks/
 /[Aa]ssets/Sounds/SoundEffects/CarHonks.meta
+
+
+# Blocks Multiplayer Services
+/[Aa]ssets/Blocks/
+/[Aa]ssets/Blocks.meta

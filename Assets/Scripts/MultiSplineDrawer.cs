@@ -4,30 +4,36 @@ using System.Reflection;
 using UnityEngine;
 using UnityEngine.Splines;
 using Unity.Mathematics;
-using UnityEngine.InputSystem;
 
 public class MultiSplineDrawer : MonoBehaviour
 {
-    [Header("Drawing Source")]
-    public Transform drawingSource;
+    // Encapsulation for multiple sources
+    [System.Serializable]
+    public class DrawingSession
+    {
+        public Transform drawingSource;
+        [HideInInspector] public Spline activeSpline;
+        [HideInInspector] public List<Vector3> currentPoints = new List<Vector3>();
+    }
+
+    [Header("Drawing Sources")]
+    public List<DrawingSession> drawingSessions = new List<DrawingSession>();
+    
     public GameObject targetSpline;
     public float streetHeight = 0f;
 
-    [Header("Distance from the previous knot until a new knot can be created")]
-    [SerializeField] private float minDistance = 0.1f;
-    [Header("The distance when several knots are linked")]
-    [SerializeField] private float connectThreshold = 0.09f;
+    [Header("Distance thresholds")]
+    [SerializeField] private float minDistance = 0.2f;
+    [SerializeField] private float connectThreshold = 0.2f;
 
     [Header("Road Width Generation")]
-    public float splineWidth = 0.2f;
+    public float splineWidth = 0.1f;
 
     [Header("Live Infrastructure Updates (Defaults)")]
     [SerializeField] private TrafficNetwork trafficNetwork;
     [SerializeField] private VehicleManager vehicleManager;
 
     private SplineContainer splineContainer;
-    private Spline activeSpline;
-    private List<Vector3> currentPoints = new List<Vector3>();
     private bool isHolding;
     private Component[] widthComponents;
 
@@ -50,8 +56,13 @@ public class MultiSplineDrawer : MonoBehaviour
             widthComponents = targetSpline.GetComponents<Component>();
 
         isHolding = false;
-        activeSpline = null;
-        currentPoints.Clear();
+        
+        // Clear all points and spline references in sessions
+        foreach (var session in drawingSessions)
+        {
+            session.activeSpline = null;
+            session.currentPoints.Clear();
+        }
 
         // 1. Safely remove every single spline inside the container
         if (splineContainer != null)
@@ -97,16 +108,30 @@ public class MultiSplineDrawer : MonoBehaviour
 
         Debug.Log("<color=red>[Spline Drawer]</color> All generated road splines and width maps were successfully cleared in Unity 6!");
     }
+
     public void StartDrawing()
     {
         isHolding = true;
-        StartNewSpline();
+
+        // Start a new spline for each active session
+        foreach (var session in drawingSessions)
+        {
+            if (session.drawingSource == null) continue;
+            
+            session.currentPoints.Clear();
+            StartNewSpline(session);
+        }
     }
 
     public void StopDrawing()
     {
         isHolding = false;
-        currentPoints.Clear();
+
+        foreach (var session in drawingSessions)
+        {
+            session.currentPoints.Clear();
+            session.activeSpline = null;
+        }
 
         ConnectAllInternalSplines();
 
@@ -118,39 +143,34 @@ public class MultiSplineDrawer : MonoBehaviour
     {
         if (!isHolding) return;
 
-        if (drawingSource == null)
+        bool contentChanged = false;
+
+        foreach (var session in drawingSessions)
         {
-            Debug.LogWarning("Please assign a 'drawingSource' GameObject in the Inspector!");
-            return;
+            if (session.drawingSource == null || session.activeSpline == null) continue;
+
+            // 1. Retrieve the object's 3D position
+            Vector3 worldPos = session.drawingSource.position;
+
+            // 2. Set the position to your desired street level
+            worldPos.y = streetHeight;
+
+            // 3. Distance check
+            if (session.currentPoints.Count == 0 || Vector3.Distance(session.currentPoints[^1], worldPos) > minDistance)
+            {
+                session.currentPoints.Add(worldPos);
+                UpdateSpline(session);
+                contentChanged = true;
+            }
         }
 
-        // 1. Retrieve the object's 3D position
-        Vector3 worldPos = drawingSource.position;
-
-        // 2. Set the position to your desired street level
-        worldPos.y = streetHeight;
-
-        // 3. Distance check
-        if (currentPoints.Count == 0 || Vector3.Distance(currentPoints[^1], worldPos) > minDistance)
+        // Rebuild visual components once per frame if any spline changed
+        if (contentChanged)
         {
-            currentPoints.Add(worldPos);
-            UpdateSpline();
+            RebuildAllRoadComponents();
         }
     }
-    /// <summary>
-    /// This method holds the original hardcoded updating logic.
-    /// It is registered as a permanent listener to onMouseUpEvent inside Awake().
-    /// </summary>
-    /* private void DefaultNetworkAndVehicleUpdates()
-     {
-         // Notify the infrastructure network to bake new nodes
-         if (trafficNetwork == null) trafficNetwork = FindAnyObjectByType<TrafficNetwork>();
-         if (trafficNetwork != null) trafficNetwork.RebuildGraph();
 
-         // Force all vehicles to find potential shortcuts on the new road
-         if (vehicleManager == null) vehicleManager = FindAnyObjectByType<VehicleManager>();
-         if (vehicleManager != null) vehicleManager.RecalculateAllVehiclePaths();
-     }*/
     private void DefaultNetworkAndVehicleUpdates()
     {
         if (trafficNetwork == null) trafficNetwork = FindAnyObjectByType<TrafficNetwork>();
@@ -166,24 +186,22 @@ public class MultiSplineDrawer : MonoBehaviour
         if (vehicleManager != null) vehicleManager.RecalculateAllVehiclePaths();
     }
 
-    private void StartNewSpline()
+    private void StartNewSpline(DrawingSession session)
     {
-        activeSpline = new Spline();
-        splineContainer.AddSpline(activeSpline);
+        session.activeSpline = new Spline();
+        splineContainer.AddSpline(session.activeSpline);
         PatchAllWidthComponents(splineContainer.Splines.Count - 1);
     }
 
-    private void UpdateSpline()
+    private void UpdateSpline(DrawingSession session)
     {
-        if (activeSpline == null) return;
-        activeSpline.Clear();
+        session.activeSpline.Clear();
 
-        foreach (Vector3 worldPos in currentPoints)
+        foreach (Vector3 worldPos in session.currentPoints)
         {
             Vector3 localPos = splineContainer.transform.InverseTransformPoint(worldPos);
-            activeSpline.Add(new BezierKnot(localPos));
+            session.activeSpline.Add(new BezierKnot(localPos));
         }
-        RebuildAllRoadComponents();
     }
 
     public void ConnectAllInternalSplines()
@@ -237,7 +255,6 @@ public class MultiSplineDrawer : MonoBehaviour
             if (comp == null) continue;
             TryPatchWidthOnComponent(comp, splineIndex);
         }
-        RebuildAllRoadComponents();
     }
 
     private void TryPatchWidthOnComponent(Component comp, int splineIndex)
@@ -310,7 +327,7 @@ public class MultiSplineDrawer : MonoBehaviour
             }
             catch (Exception e) { Debug.LogWarning($"SplineData Assignment Error: {e.Message}"); }
             return;
-        }
+            }
     }
 
     private object CloneAndSetDefault(object template, float defaultValue)

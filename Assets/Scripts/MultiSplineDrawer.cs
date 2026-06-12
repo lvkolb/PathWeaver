@@ -18,7 +18,7 @@ public class MultiSplineDrawer : MonoBehaviour
 
     [Header("Layer Selection Dropdown")]
     [Tooltip("Select the layer of the GameObjects that should act as drawing sources.")]
-    public SingleLayer targetLayer;
+    public SingleLayer targetLayer; // Weaver
 
     [Header("Drawing Sessions (Auto-Filled)")]
     public List<DrawingSession> drawingSessions = new List<DrawingSession>();
@@ -34,7 +34,7 @@ public class MultiSplineDrawer : MonoBehaviour
     [Header("Road Width Generation")]
     public float splineWidth = 0.2f;
 
-    [Header("Live Infrastructure Updates (Defaults) If not set, it search automatically.")]
+    [Header("Live Infrastructure Updates (Defaults) If not set -> Auto-Filled.")]
     [SerializeField] private TrafficNetwork trafficNetwork;
     [SerializeField] private VehicleManager vehicleManager;
 

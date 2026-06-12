@@ -3,7 +3,8 @@
 --- !u!78 &1
 TagManager:
   serializedVersion: 3
-  tags: []
+  tags:
+  - Vehicle
   layers:
   - Default
   - TransparentFX
@@ -17,8 +18,8 @@ TagManager:
   - Road
   - Vehicle
   - Nature
+  - Weaver
   - Jammer
-  - 
   - 
   - 
   - 

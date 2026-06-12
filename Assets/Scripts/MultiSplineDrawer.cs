@@ -29,7 +29,7 @@ public class MultiSplineDrawer : MonoBehaviour
     [Header("Road Width Generation")]
     public float splineWidth = 0.1f;
 
-    [Header("Live Infrastructure Updates (Defaults)")]
+    [Header("Live Infrastructure Updates (Defaults) If not set, it search automatically.")]
     [SerializeField] private TrafficNetwork trafficNetwork;
     [SerializeField] private VehicleManager vehicleManager;
 
@@ -41,6 +41,50 @@ public class MultiSplineDrawer : MonoBehaviour
     {
         splineContainer = targetSpline.GetComponent<SplineContainer>();
         widthComponents = targetSpline.GetComponents<Component>();
+    }
+
+    // =================================================================================
+    // DYNAMIC SOURCE MANAGEMENT
+    // =================================================================================
+    
+    /// <summary>
+    /// Finds all active GameObjects on the specified layer and assigns them as drawing sources.
+    /// Deactivated objects (SetActive(false)) are automatically ignored.
+    /// </summary>
+    /// <param name="layerName">The exact name of the Unity Layer.</param>
+    public void RefreshDrawingSourcesByLayer(string layerName)
+    {
+        int layerMask = LayerMask.NameToLayer(layerName);
+        if (layerMask == -1)
+        {
+            Debug.LogError($"[MultiSplineDrawer] Layer '{layerName}' does not exist in project settings!");
+            return;
+        }
+
+        // If currently drawing, stop to safely reset the lists
+        if (isHolding)
+        {
+            StopDrawing();
+        }
+
+        drawingSessions.Clear();
+
+        // FindObjectsByType with FindObjectsSortMode.None only finds active GameObjects in the scene
+        GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+
+        foreach (GameObject obj in allObjects)
+        {
+            if (obj.layer == layerMask)
+            {
+                DrawingSession newSession = new DrawingSession
+                {
+                    drawingSource = obj.transform
+                };
+                drawingSessions.Add(newSession);
+            }
+        }
+
+        Debug.Log($"[MultiSplineDrawer] Found and registered {drawingSessions.Count} active drawing sources on layer '{layerName}'.");
     }
 
     // =================================================================================
@@ -116,7 +160,9 @@ public class MultiSplineDrawer : MonoBehaviour
         // Start a new spline for each active session
         foreach (var session in drawingSessions)
         {
-            if (session.drawingSource == null) continue;
+            // Safeguard against objects that were destroyed or disabled after gathering
+            if (session.drawingSource == null || !session.drawingSource.gameObject.activeInHierarchy) 
+                continue;
             
             session.currentPoints.Clear();
             StartNewSpline(session);
@@ -147,7 +193,9 @@ public class MultiSplineDrawer : MonoBehaviour
 
         foreach (var session in drawingSessions)
         {
-            if (session.drawingSource == null || session.activeSpline == null) continue;
+            // Safety check: ensure source is still valid and active during runtime
+            if (session.drawingSource == null || !session.drawingSource.gameObject.activeInHierarchy || session.activeSpline == null) 
+                continue;
 
             // 1. Retrieve the object's 3D position
             Vector3 worldPos = session.drawingSource.position;
@@ -327,7 +375,7 @@ public class MultiSplineDrawer : MonoBehaviour
             }
             catch (Exception e) { Debug.LogWarning($"SplineData Assignment Error: {e.Message}"); }
             return;
-            }
+        }
     }
 
     private object CloneAndSetDefault(object template, float defaultValue)

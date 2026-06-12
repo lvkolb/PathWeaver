@@ -16,18 +16,23 @@ public class MultiSplineDrawer : MonoBehaviour
         [HideInInspector] public List<Vector3> currentPoints = new List<Vector3>();
     }
 
-    [Header("Drawing Sources")]
+    [Header("Layer Selection Dropdown")]
+    [Tooltip("Select the layer of the GameObjects that should act as drawing sources.")]
+    public SingleLayer targetLayer;
+
+    [Header("Drawing Sessions (Auto-Filled)")]
     public List<DrawingSession> drawingSessions = new List<DrawingSession>();
     
+    [Header("Target Spline Settings")]
     public GameObject targetSpline;
     public float streetHeight = 0f;
 
-    [Header("Distance thresholds")]
+    [Header("Distance Thresholds")]
     [SerializeField] private float minDistance = 0.2f;
     [SerializeField] private float connectThreshold = 0.2f;
 
     [Header("Road Width Generation")]
-    public float splineWidth = 0.1f;
+    public float splineWidth = 0.2f;
 
     [Header("Live Infrastructure Updates (Defaults) If not set, it search automatically.")]
     [SerializeField] private TrafficNetwork trafficNetwork;
@@ -48,16 +53,14 @@ public class MultiSplineDrawer : MonoBehaviour
     // =================================================================================
     
     /// <summary>
-    /// Finds all active GameObjects on the specified layer and assigns them as drawing sources.
-    /// Deactivated objects (SetActive(false)) are automatically ignored.
+    /// Finds all active GameObjects on the specified layer index and assigns them as drawing sources.
     /// </summary>
-    /// <param name="layerName">The exact name of the Unity Layer.</param>
-    public void RefreshDrawingSourcesByLayer(string layerName)
+    /// <param name="layerIndex">The index of the Unity Layer.</param>
+    public void RefreshDrawingSourcesByLayer(int layerIndex)
     {
-        int layerMask = LayerMask.NameToLayer(layerName);
-        if (layerMask == -1)
+        if (layerIndex < 0 || layerIndex > 31)
         {
-            Debug.LogError($"[MultiSplineDrawer] Layer '{layerName}' does not exist in project settings!");
+            Debug.LogError("[MultiSplineDrawer] Invalid layer index selected!");
             return;
         }
 
@@ -69,22 +72,41 @@ public class MultiSplineDrawer : MonoBehaviour
 
         drawingSessions.Clear();
 
-        // FindObjectsByType with FindObjectsSortMode.None only finds active GameObjects in the scene
+        // FindObjectsByType only returns active GameObjects in the scene
         GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
 
-        foreach (GameObject obj in allObjects)
+       foreach (GameObject obj in allObjects)
+{
+    if (obj.layer == layerIndex)
+    {
+        // OPTIONAL: Check if any parent higher up in the hierarchy already has this layer
+        // to prevent double-drawing from Parent and Child.
+        Transform parent = obj.transform.parent;
+        bool parentAlreadyHasLayer = false;
+        
+        while (parent != null)
         {
-            if (obj.layer == layerMask)
+            if (parent.gameObject.layer == layerIndex)
             {
-                DrawingSession newSession = new DrawingSession
-                {
-                    drawingSource = obj.transform
-                };
-                drawingSessions.Add(newSession);
+                parentAlreadyHasLayer = true;
+                break;
             }
+            parent = parent.parent;
         }
 
-        Debug.Log($"[MultiSplineDrawer] Found and registered {drawingSessions.Count} active drawing sources on layer '{layerName}'.");
+        // Only add if no parent uses the same layer
+        if (!parentAlreadyHasLayer)
+        {
+            DrawingSession newSession = new DrawingSession
+            {
+                drawingSource = obj.transform
+            };
+            drawingSessions.Add(newSession);
+        }
+    }
+}
+
+        Debug.Log($"[MultiSplineDrawer] Found and registered {drawingSessions.Count} active drawing sources on layer '{LayerMask.LayerToName(layerIndex)}'.");
     }
 
     // =================================================================================
@@ -155,6 +177,9 @@ public class MultiSplineDrawer : MonoBehaviour
 
     public void StartDrawing()
     {
+        // Automatically grab the latest active sources from the dropdown layer before starting
+        RefreshDrawingSourcesByLayer(targetLayer.layerIndex);
+
         isHolding = true;
 
         // Start a new spline for each active session
@@ -414,3 +439,35 @@ public class MultiSplineDrawer : MonoBehaviour
         }
     }
 }
+
+// ── Helper Struct for Inspector Dropdown ─────────────────────────────────────
+
+[System.Serializable]
+public struct SingleLayer
+{
+    [SerializeField]
+    private int m_LayerIndex;
+
+    public int layerIndex
+    {
+        get => m_LayerIndex;
+        set => m_LayerIndex = value;
+    }
+}
+
+// Property Drawer for the Dropdown (Editor Rendering)
+
+#if UNITY_EDITOR
+[UnityEditor.CustomPropertyDrawer(typeof(SingleLayer))]
+public class SingleLayerPropertyDrawer : UnityEditor.PropertyDrawer
+{
+    public override void OnGUI(Rect position, UnityEditor.SerializedProperty property, GUIContent label)
+    {
+        UnityEditor.SerializedProperty layerIndexProp = property.FindPropertyRelative("m_LayerIndex");
+        if (layerIndexProp != null)
+        {
+            layerIndexProp.intValue = UnityEditor.EditorGUI.LayerField(position, label, layerIndexProp.intValue);
+        }
+    }
+}
+#endif

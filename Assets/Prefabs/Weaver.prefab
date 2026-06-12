@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 134813000398818306}
   - component: {fileID: 3282453174395131588}
-  m_Layer: 0
+  m_Layer: 12
   m_Name: Weaver
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -67,7 +67,7 @@ GameObject:
   - component: {fileID: 1687088588654148082}
   - component: {fileID: 4622898563084782689}
   - component: {fileID: 2816787557755144101}
-  m_Layer: 0
+  m_Layer: 12
   m_Name: Capsule
   m_TagString: Untagged
   m_Icon: {fileID: 0}

@@ -5,6 +5,10 @@ using UnityEngine;
 using UnityEngine.Splines;
 using Unity.Mathematics;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
 public class MultiSplineDrawer : MonoBehaviour
 {
     // Encapsulation for multiple sources
@@ -22,7 +26,7 @@ public class MultiSplineDrawer : MonoBehaviour
 
     [Header("Drawing Sessions (Auto-Filled)")]
     public List<DrawingSession> drawingSessions = new List<DrawingSession>();
-    
+
     [Header("Target Spline Settings")]
     public GameObject targetSpline;
     public float streetHeight = 0f;
@@ -51,7 +55,7 @@ public class MultiSplineDrawer : MonoBehaviour
     // =================================================================================
     // DYNAMIC SOURCE MANAGEMENT
     // =================================================================================
-    
+
     /// <summary>
     /// Finds all active GameObjects on the specified layer index and assigns them as drawing sources.
     /// </summary>
@@ -72,39 +76,40 @@ public class MultiSplineDrawer : MonoBehaviour
 
         drawingSessions.Clear();
 
-        // FindObjectsByType only returns active GameObjects in the scene
-        GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+        // Unity 6 updated overload: FindObjectsByType<T>() defaults to sorted instance IDs 
+        // without requiring the deprecated FindObjectsSortMode enum parameter.
+        GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsInactive.Exclude);
 
-       foreach (GameObject obj in allObjects)
-{
-    if (obj.layer == layerIndex)
-    {
-        // OPTIONAL: Check if any parent higher up in the hierarchy already has this layer
-        // to prevent double-drawing from Parent and Child.
-        Transform parent = obj.transform.parent;
-        bool parentAlreadyHasLayer = false;
-        
-        while (parent != null)
+        foreach (GameObject obj in allObjects)
         {
-            if (parent.gameObject.layer == layerIndex)
+            if (obj.layer == layerIndex)
             {
-                parentAlreadyHasLayer = true;
-                break;
+                // OPTIONAL: Check if any parent higher up in the hierarchy already has this layer
+                // to prevent double-drawing from Parent and Child.
+                Transform parent = obj.transform.parent;
+                bool parentAlreadyHasLayer = false;
+
+                while (parent != null)
+                {
+                    if (parent.gameObject.layer == layerIndex)
+                    {
+                        parentAlreadyHasLayer = true;
+                        break;
+                    }
+                    parent = parent.parent;
+                }
+
+                // Only add if no parent uses the same layer
+                if (!parentAlreadyHasLayer)
+                {
+                    DrawingSession newSession = new DrawingSession
+                    {
+                        drawingSource = obj.transform
+                    };
+                    drawingSessions.Add(newSession);
+                }
             }
-            parent = parent.parent;
         }
-
-        // Only add if no parent uses the same layer
-        if (!parentAlreadyHasLayer)
-        {
-            DrawingSession newSession = new DrawingSession
-            {
-                drawingSource = obj.transform
-            };
-            drawingSessions.Add(newSession);
-        }
-    }
-}
 
         Debug.Log($"[MultiSplineDrawer] Found and registered {drawingSessions.Count} active drawing sources on layer '{LayerMask.LayerToName(layerIndex)}'.");
     }
@@ -122,7 +127,7 @@ public class MultiSplineDrawer : MonoBehaviour
             widthComponents = targetSpline.GetComponents<Component>();
 
         isHolding = false;
-        
+
         // Clear all points and spline references in sessions
         foreach (var session in drawingSessions)
         {
@@ -186,9 +191,9 @@ public class MultiSplineDrawer : MonoBehaviour
         foreach (var session in drawingSessions)
         {
             // Safeguard against objects that were destroyed or disabled after gathering
-            if (session.drawingSource == null || !session.drawingSource.gameObject.activeInHierarchy) 
+            if (session.drawingSource == null || !session.drawingSource.gameObject.activeInHierarchy)
                 continue;
-            
+
             session.currentPoints.Clear();
             StartNewSpline(session);
         }
@@ -219,7 +224,7 @@ public class MultiSplineDrawer : MonoBehaviour
         foreach (var session in drawingSessions)
         {
             // Safety check: ensure source is still valid and active during runtime
-            if (session.drawingSource == null || !session.drawingSource.gameObject.activeInHierarchy || session.activeSpline == null) 
+            if (session.drawingSource == null || !session.drawingSource.gameObject.activeInHierarchy || session.activeSpline == null)
                 continue;
 
             // 1. Retrieve the object's 3D position
@@ -458,15 +463,15 @@ public struct SingleLayer
 // Property Drawer for the Dropdown (Editor Rendering)
 
 #if UNITY_EDITOR
-[UnityEditor.CustomPropertyDrawer(typeof(SingleLayer))]
-public class SingleLayerPropertyDrawer : UnityEditor.PropertyDrawer
+[CustomPropertyDrawer(typeof(SingleLayer))]
+public class SingleLayerPropertyDrawer : PropertyDrawer
 {
-    public override void OnGUI(Rect position, UnityEditor.SerializedProperty property, GUIContent label)
+    public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
     {
-        UnityEditor.SerializedProperty layerIndexProp = property.FindPropertyRelative("m_LayerIndex");
+        SerializedProperty layerIndexProp = property.FindPropertyRelative("m_LayerIndex");
         if (layerIndexProp != null)
         {
-            layerIndexProp.intValue = UnityEditor.EditorGUI.LayerField(position, label, layerIndexProp.intValue);
+            layerIndexProp.intValue = EditorGUI.LayerField(position, label, layerIndexProp.intValue);
         }
     }
 }

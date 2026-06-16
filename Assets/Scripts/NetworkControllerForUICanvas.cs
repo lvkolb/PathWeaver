@@ -13,6 +13,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
     [SerializeField] private GameObject uiPanel; // The main UI panel containing the connection controls
     [SerializeField] private Button hostButton;
     [SerializeField] private Button clientButton;
+    [SerializeField] private Button hideUIButton; // Button to manually hide the UI panel
     [SerializeField] private TMP_InputField joinCodeInput;
     [SerializeField] private TMP_Text codeDisplayLabel;
 
@@ -21,6 +22,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
         // Register button click events (uGUI syntax)
         if (hostButton != null) hostButton.onClick.AddListener(Create);
         if (clientButton != null) clientButton.onClick.AddListener(Join);
+        if (hideUIButton != null) hideUIButton.onClick.AddListener(HideUI);
 
         // Turn off buttons while initializing services
         SetUIInteractable(false);
@@ -54,6 +56,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
         // Unregister events to prevent memory leaks
         if (hostButton != null) hostButton.onClick.RemoveListener(Create);
         if (clientButton != null) clientButton.onClick.RemoveListener(Join);
+        if (hideUIButton != null) hideUIButton.onClick.RemoveListener(HideUI);
     }
 
     public async void Create()
@@ -72,7 +75,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
             if (codeDisplayLabel != null) codeDisplayLabel.text = $"Join Code: {session.Code}";
 
             // Hide the UI since the session was successfully created
-            HideUI();
+            // HideUI();
         }
         catch (Exception e)
         {
@@ -103,7 +106,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
             if (codeDisplayLabel != null) codeDisplayLabel.text = $"Joined Room: {code}";
 
             // Hide the UI since the session was successfully joined
-            HideUI();
+            // HideUI();
         }
         catch (Exception e)
         {
@@ -116,6 +119,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
     {
         if (hostButton != null) hostButton.interactable = state;
         if (clientButton != null) clientButton.interactable = state;
+        if (hideUIButton != null) hideUIButton.interactable = state;
         if (joinCodeInput != null) joinCodeInput.interactable = state;
     }
 

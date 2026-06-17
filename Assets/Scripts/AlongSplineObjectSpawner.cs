@@ -3,23 +3,21 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Splines;
 using Unity.Mathematics;
+using Unity.Netcode; // Required for Netcode integration
 
-public class AlongSplineObjectSpawner : MonoBehaviour
+public class AlongSplineObjectSpawner : NetworkBehaviour
 {
-    // Struct to hold individual object pools and their specific placement parameters
     [System.Serializable]
     public struct SpawnGroupConfiguration
     {
         [Header("Group Identity")]
-        [Tooltip("Gives the group a clear name in the inspector (e.g., Houses or Streetlamps).")]
         public string groupName;
 
         [Header("References")]
-        [Tooltip("The parent folder gameobject in which objects of this specific group are spawned.")]
+        [Tooltip("The parent folder gameobject in which objects of this specific group are spawned. MUST have a NetworkObject component at runtime!")]
         public Transform objectsFolder;
 
         [Header("Spawn Pool")]
-        [Tooltip("The prefabs assigned to this specific group (e.g., various house models or different light variants).")]
         public List<GameObject> objectPrefabs;
 
         [Header("Placement Settings")]
@@ -31,31 +29,55 @@ public class AlongSplineObjectSpawner : MonoBehaviour
         public float spawnIntervalRandomness;
 
         [Header("Collision Layers")]
-        [Tooltip("Which layers block these specific items during the placement query check?")]
+        [Tooltip("MUST include the layer your house prefabs are on so they block each other and get demolished!")]
         public LayerMask avoidanceLayers;
 
         [Header("Side Toggle")]
-        [Tooltip("Should these specific objects spawn on the right side of the road layout?")]
         public bool spawnOnRightSide;
-        [Tooltip("Should these specific objects spawn on the left side of the road layout?")]
         public bool spawnOnLeftSide;
     }
 
     [Header("References")]
     [SerializeField] private SplineContainer splineContainer;
-    [Header("The field from which we dynamically read the current road width (splineWidth).")]
     [SerializeField] private MultiSplineDrawer multiSplineDrawer;
 
     [Header("Multi-Pool Configurations")]
-    [Tooltip("Create custom generation sets here (e.g., Element 0 for residential houses, Element 1 for streetlights).")]
     [SerializeField] private List<SpawnGroupConfiguration> spawnGroups = new List<SpawnGroupConfiguration>();
 
-    // Stores the references of the splines that have already been decorated
-    private HashSet<Spline> processedSplines = new HashSet<Spline>();
+    // Tracks how many splines have already been fully processed and decorated
+    private int processedSplineCount = 0;
 
-    // Internal list to track generated objects so they can be safely removed on clear execution
-    private List<GameObject> spawnedDecoObjects = new List<GameObject>();
+    // Track network objects using NetworkObject references to support network operations and destruction
+    private List<NetworkObject> spawnedNetworkDecoObjects = new List<NetworkObject>();
 
+    // =================================================================================
+    // MULTIPLAYER SERVER/CLIENT ROUTINE (Unity 6 Compatible)
+    // =================================================================================
+
+    public void RequestSplineSpawn()
+    {
+        if (Application.isPlaying)
+        {
+            if (IsServer)
+            {
+                CheckForNewSplinesAndSpawn();
+            }
+            else if (IsClient)
+            {
+                TriggerSplineSpawnRpc();
+            }
+        }
+        else
+        {
+            CheckForNewSplinesAndSpawn();
+        }
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void TriggerSplineSpawnRpc()
+    {
+        CheckForNewSplinesAndSpawn();
+    }
 
     // =================================================================================
     // FUNCTION 1: CHECK FOR NEW SPLINES (DEMOLISH & NEW BUILD)
@@ -63,33 +85,43 @@ public class AlongSplineObjectSpawner : MonoBehaviour
     [ContextMenu("Check For New Splines And Spawn")]
     public void CheckForNewSplinesAndSpawn()
     {
+        if (Application.isPlaying && multiSplineDrawer != null && multiSplineDrawer.IsDrawingActive)
+        {
+            return;
+        }
+
+        if (Application.isPlaying && !IsServer) return;
         if (splineContainer == null) return;
 
         System.Random rng = new System.Random();
 
+        // STEP 1: RÄUME ALLE STRASSEN AUF
+        // Jedes Mal, wenn eine Straße fertig wird, prüfen wir JEDEN Spline auf Kollisionen mit alten Häusern
         for (int i = 0; i < splineContainer.Splines.Count; i++)
         {
-            var spline = splineContainer.Splines[i];
+            DemolishObjectsInWayOfSpline(i);
+        }
 
-            if (!processedSplines.Contains(spline))
+        // STEP 2: SPAWNE NEUE HÄUSER NUR AN NEUEN STRASSEN
+        for (int i = 0; i < splineContainer.Splines.Count; i++)
+        {
+            if (i >= processedSplineCount)
             {
-                DemolishObjectsInWayOfSpline(i);
-
-                // Process each configuration group sequentially along the newly added spline line
                 foreach (var group in spawnGroups)
                 {
                     SpawnGroupForSingleSpline(i, group, rng);
                 }
-
-                processedSplines.Add(spline);
             }
         }
+
+        // Counter auf den aktuellen Stand bringen
+        processedSplineCount = splineContainer.Splines.Count;
     }
 
     private void DemolishObjectsInWayOfSpline(int splineIndex)
     {
         var spline = splineContainer.Splines[splineIndex];
-        float4x4 containerMatrix = splineContainer.transform.localToWorldMatrix;
+        Matrix4x4 containerMatrix = splineContainer.transform.localToWorldMatrix;
         float splineLength = SplineUtility.CalculateLength(spline, containerMatrix);
         if (splineLength <= 0) return;
 
@@ -99,9 +131,9 @@ public class AlongSplineObjectSpawner : MonoBehaviour
         float currentDistance = 0f;
         int demolishCount = 0;
 
-        Vector3 roadCheckHalfSize = new Vector3(halfRoadWidth, 3.0f, checkStep * 0.5f);
+        // Erhöhte Box-Höhe (Y), um schief stehende VR-Objekte oder komplexe Prefabs sicher zu treffen
+        Vector3 roadCheckHalfSize = new Vector3(halfRoadWidth, 10.0f, checkStep * 0.5f);
 
-        // Combine the layer masks of all configuration groups for the global layout clearance sweep
         LayerMask combinedLayers = 0;
         foreach (var group in spawnGroups) combinedLayers |= group.avoidanceLayers;
 
@@ -122,17 +154,31 @@ public class AlongSplineObjectSpawner : MonoBehaviour
                 {
                     if (col.gameObject != splineContainer.gameObject)
                     {
-                        if (spawnedDecoObjects.Contains(col.gameObject))
+                        // FIX 1: Greife das NetworkObject rigoros aus der Root oder den Parents ab
+                        NetworkObject netObj = col.GetComponentInParent<NetworkObject>();
+
+                        if (netObj != null)
                         {
-                            spawnedDecoObjects.Remove(col.gameObject);
+                            // Aus der internen Liste austragen, falls es von diesem Spawner stammte
+                            if (spawnedNetworkDecoObjects.Contains(netObj))
+                            {
+                                spawnedNetworkDecoObjects.Remove(netObj);
+                            }
+
+                            demolishCount++;
+
+                            if (Application.isPlaying)
+                            {
+                                if (netObj.IsSpawned)
+                                    netObj.Despawn(true); // Über Netcode für alle VR-Brillen weglöschen
+                                else
+                                    Destroy(netObj.gameObject);
+                            }
+                            else
+                            {
+                                DestroyImmediate(netObj.gameObject);
+                            }
                         }
-
-                        demolishCount++;
-
-                        if (Application.isPlaying)
-                            Destroy(col.gameObject);
-                        else
-                            DestroyImmediate(col.gameObject);
                     }
                 }
             }
@@ -141,10 +187,9 @@ public class AlongSplineObjectSpawner : MonoBehaviour
 
         if (demolishCount > 0)
         {
-            Debug.Log($"<color=red>[Demolition]</color> {demolishCount} blocking objects were flattened by the new road!");
+            Debug.Log($"<color=red>[Demolition]</color> {demolishCount} objects removed from the path of road {splineIndex}!");
         }
     }
-
 
     // =================================================================================
     // FUNCTION 2: SPAWNING FOR A SPECIFIC CONFIGURATION GROUP
@@ -154,7 +199,7 @@ public class AlongSplineObjectSpawner : MonoBehaviour
         if (splineContainer == null || group.objectPrefabs == null || group.objectPrefabs.Count == 0) return;
 
         var spline = splineContainer.Splines[splineIndex];
-        float4x4 containerMatrix = splineContainer.transform.localToWorldMatrix;
+        Matrix4x4 containerMatrix = splineContainer.transform.localToWorldMatrix;
         float splineLength = SplineUtility.CalculateLength(spline, containerMatrix);
         if (splineLength <= 0) return;
 
@@ -172,20 +217,17 @@ public class AlongSplineObjectSpawner : MonoBehaviour
             {
                 Vector3 rightVector = Vector3.Cross(up, tangent).normalized;
 
-                // --- SPAWN RIGHT SIDE (IF ENABLED IN GROUP) ---
                 if (group.spawnOnRightSide)
                 {
                     TryPlaceSideObject((Vector3)worldPos, rightVector, true, group, rng);
                 }
 
-                // --- SPAWN LEFT SIDE (IF ENABLED IN GROUP) ---
                 if (group.spawnOnLeftSide)
                 {
                     TryPlaceSideObject((Vector3)worldPos, rightVector, false, group, rng);
                 }
             }
 
-            // Apply group-specific spacing increment parameters
             float randomness = (float)(rng.NextDouble() * (group.spawnIntervalRandomness * 2) - group.spawnIntervalRandomness);
             float nextStep = group.spawnInterval + randomness;
 
@@ -210,21 +252,16 @@ public class AlongSplineObjectSpawner : MonoBehaviour
         Vector3 lookDir = isRightSide ? -rightDirection : rightDirection;
         Quaternion spawnRotation = Quaternion.LookRotation(lookDir);
 
-        // --- THE ADVANCED ROTATION FIX ---
-        // Mathematically project the unscaled bounding box corners into world space orientation
-        // using the final target rotation and micro scale dimensions.
         Matrix4x4 localToWorldMatrix = Matrix4x4.TRS(Vector3.zero, spawnRotation, targetScale);
 
         Vector3 halfSize = col.size * 0.5f;
         Vector3 localCenter = col.center;
 
-        // Extract outer footprint boundary corner vectors
         Vector3 p1 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(halfSize.x, 0, halfSize.z));
         Vector3 p2 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(-halfSize.x, 0, halfSize.z));
         Vector3 p3 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(halfSize.x, 0, -halfSize.z));
         Vector3 p4 = localToWorldMatrix.MultiplyPoint3x4(localCenter + new Vector3(-halfSize.x, 0, -halfSize.z));
 
-        // Gauge real physical extension limits pointing directly towards the road margin track
         float proj1 = Vector3.Dot(p1, rightDirection);
         float proj2 = Vector3.Dot(p2, rightDirection);
         float proj3 = Vector3.Dot(p3, rightDirection);
@@ -235,61 +272,117 @@ public class AlongSplineObjectSpawner : MonoBehaviour
 
         float halfRoadWidth = (multiSplineDrawer != null) ? multiSplineDrawer.splineWidth * 0.5f : 0f;
 
-        // MAIN OFFSET FORMULA: Half road width + group side clearance margin + exact projected item boundary depth
         float totalOffset = halfRoadWidth + group.spacingFromRoad + rotatedObjectHalfWidth;
 
         Vector3 spawnDirection = isRightSide ? rightDirection : -rightDirection;
         Vector3 spawnPosition = roadCenter + (spawnDirection * totalOffset);
         spawnPosition.y = splineContainer.transform.position.y;
 
-        // Calculate custom spatial query dimensions matching current active group rules
         Vector3 unrotatedExtents = (col.size * microScaleFactor) * 0.5f;
         Vector3 checkBoxExtents = unrotatedExtents;
         checkBoxExtents.x += group.spacingFromRoad;
-        checkBoxExtents.z += group.spawnInterval;
+        checkBoxExtents.z += group.spawnInterval * 0.4f;
         checkBoxExtents.y += 0.5f;
 
-        // Query workspace utilizing group-specific layer filter boundaries
+        // FIX 2: GLOBALE DISTANZ-VALIDIERUNG GEGEN ALLE NETCODE OBJEKTE IN DER SZENE
+        // Verhindert verlässlicher als Physics.CheckBox, dass Häuser aufeinander klatschen.
+        if (Application.isPlaying)
+        {
+            float spawnSafetyRadius = group.spawnInterval * 0.85f;
+
+            // Hol dir JEDES aktive NetworkObject in der Szene (performant in Unity 6)
+            NetworkObject[] allNetObjects = FindObjectsByType<NetworkObject>(FindObjectsInactive.Exclude);
+
+            foreach (var netObj in allNetObjects)
+            {
+                // Ignoriere den Spawner, Hände oder die Straße selbst
+                if (netObj == this.NetworkObject || netObj.gameObject == splineContainer.gameObject)
+                    continue;
+
+                // Wenn ein beliebiges Netzwerk-Objekt (Haus) zu nah dran ist -> Nicht bauen!
+                if (Vector3.Distance(spawnPosition, netObj.transform.position) < spawnSafetyRadius)
+                {
+                    return;
+                }
+            }
+        }
+
+        // Physik-Backup-Check gegen statische Umweltobjekte
         if (!Physics.CheckBox(spawnPosition, checkBoxExtents, spawnRotation, group.avoidanceLayers))
         {
             GameObject newObj = Instantiate(randomPrefab, spawnPosition, spawnRotation);
             newObj.transform.localScale = targetScale;
 
-            // FIX: Uses the folder specified directly inside this configuration element
-            if (group.objectsFolder != null)
-                newObj.transform.parent = group.objectsFolder;
-            else
-                newObj.transform.parent = this.transform;
+            if (Application.isPlaying)
+            {
+                NetworkObject netObj = newObj.GetComponent<NetworkObject>();
+                if (netObj != null)
+                {
+                    netObj.Spawn(true);
+                    spawnedNetworkDecoObjects.Add(netObj);
 
-            spawnedDecoObjects.Add(newObj);
+                    Transform targetFolder = (group.objectsFolder != null) ? group.objectsFolder : this.transform;
+                    NetworkObject parentNetObj = targetFolder.GetComponent<NetworkObject>();
+
+                    if (parentNetObj != null && parentNetObj.IsSpawned)
+                    {
+                        netObj.TrySetParent(targetFolder);
+                    }
+                    else
+                    {
+                        newObj.transform.parent = targetFolder;
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"Prefab {randomPrefab.name} is missing a NetworkObject component!");
+                    Destroy(newObj);
+                }
+            }
+            else
+            {
+                if (group.objectsFolder != null)
+                    newObj.transform.parent = group.objectsFolder;
+                else
+                    newObj.transform.parent = this.transform;
+
+                NetworkObject netObj = newObj.GetComponent<NetworkObject>();
+                if (netObj != null) spawnedNetworkDecoObjects.Add(netObj);
+            }
         }
     }
-
 
     // =================================================================================
     // FUNCTION 3: CLEAR ALL
     // =================================================================================
-    [ContextMenu("Clear All Spawned Objects")]
     public void ClearAllSpawnedObjects()
     {
-        for (int i = spawnedDecoObjects.Count - 1; i >= 0; i--)
+        if (Application.isPlaying && !IsServer) return;
+
+        for (int i = spawnedNetworkDecoObjects.Count - 1; i >= 0; i--)
         {
-            GameObject obj = spawnedDecoObjects[i];
-            if (obj != null)
+            NetworkObject netObj = spawnedNetworkDecoObjects[i];
+            if (netObj != null)
             {
                 if (Application.isPlaying)
-                    Destroy(obj);
+                {
+                    if (netObj.IsSpawned)
+                        netObj.Despawn(true);
+                    else
+                        Destroy(netObj.gameObject);
+                }
                 else
-                    DestroyImmediate(obj);
+                {
+                    DestroyImmediate(netObj.gameObject);
+                }
             }
         }
 
-        spawnedDecoObjects.Clear();
-        processedSplines.Clear();
+        spawnedNetworkDecoObjects.Clear();
+        processedSplineCount = 0;
         Debug.Log("All multi-pool objects generated by this spawner have been successfully cleared!");
     }
 
-    [ContextMenu("Clear and Check")]
     public void ClearAndCheck()
     {
         ClearAllSpawnedObjects();

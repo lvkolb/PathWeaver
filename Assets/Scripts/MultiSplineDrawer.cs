@@ -38,6 +38,8 @@ public class MultiSplineDrawer : MonoBehaviour
     [Header("Road Width Generation")]
     public float splineWidth = 0.2f;
 
+    public bool IsDrawingActive => isHolding;
+
     [Header("Live Infrastructure Updates (Defaults) If not set -> Auto-Filled.")]
     [SerializeField] private TrafficNetwork trafficNetwork;
     [SerializeField] private VehicleManager vehicleManager;
@@ -68,7 +70,6 @@ public class MultiSplineDrawer : MonoBehaviour
             return;
         }
 
-        // If currently drawing, stop to safely reset the lists
         if (isHolding)
         {
             StopDrawing();
@@ -76,16 +77,19 @@ public class MultiSplineDrawer : MonoBehaviour
 
         drawingSessions.Clear();
 
-        // Unity 6 updated overload: FindObjectsByType<T>() defaults to sorted instance IDs 
-        // without requiring the deprecated FindObjectsSortMode enum parameter.
         GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsInactive.Exclude);
 
         foreach (GameObject obj in allObjects)
         {
             if (obj.layer == layerIndex)
             {
-                // OPTIONAL: Check if any parent higher up in the hierarchy already has this layer
-                // to prevent double-drawing from Parent and Child.
+                // Prevent decorative objects  
+                // or houses that have already been spawned from being registered as drawing pens/sources!
+                if (obj.name.Contains("(Clone)"))
+                {
+                    continue;
+                }
+
                 Transform parent = obj.transform.parent;
                 bool parentAlreadyHasLayer = false;
 
@@ -99,7 +103,6 @@ public class MultiSplineDrawer : MonoBehaviour
                     parent = parent.parent;
                 }
 
-                // Only add if no parent uses the same layer
                 if (!parentAlreadyHasLayer)
                 {
                     DrawingSession newSession = new DrawingSession
@@ -111,9 +114,8 @@ public class MultiSplineDrawer : MonoBehaviour
             }
         }
 
-        Debug.Log($"[MultiSplineDrawer] Found and registered {drawingSessions.Count} active drawing sources on layer '{LayerMask.LayerToName(layerIndex)}'.");
+        Debug.Log($"[MultiSplineDrawer] Found and registered {drawingSessions.Count} active drawing sources.");
     }
-
     // =================================================================================
     // CLEAR ALL SPLINES & ROAD DATA
     // =================================================================================
@@ -213,6 +215,13 @@ public class MultiSplineDrawer : MonoBehaviour
 
         // Run defaults immediately when stopped
         DefaultNetworkAndVehicleUpdates();
+
+        // FIX: Trigger the Spawner ONLY when drawing has officially stopped
+        AlongSplineObjectSpawner spawner = FindAnyObjectByType<AlongSplineObjectSpawner>();
+        if (spawner != null)
+        {
+            spawner.RequestSplineSpawn();
+        }
     }
 
     private void Update()

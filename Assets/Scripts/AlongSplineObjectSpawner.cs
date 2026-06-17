@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Splines;
 using Unity.Mathematics;
-using Unity.Netcode; // Required for Netcode integration
+using Unity.Netcode;
 
 public class AlongSplineObjectSpawner : NetworkBehaviour
 {
@@ -44,15 +44,17 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
     [Header("Multi-Pool Configurations")]
     [SerializeField] private List<SpawnGroupConfiguration> spawnGroups = new List<SpawnGroupConfiguration>();
 
-    // Tracks how many splines have already been fully processed and decorated
     private int processedSplineCount = 0;
-
-    // Track network objects using NetworkObject references to support network operations and destruction
     private List<NetworkObject> spawnedNetworkDecoObjects = new List<NetworkObject>();
 
-    // =================================================================================
-    // MULTIPLAYER SERVER/CLIENT ROUTINE (Unity 6 Compatible)
-    // =================================================================================
+    // Structure to cache gizmo data for visualization in the Editor scene view
+    private struct GizmoDebugData
+    {
+        public Vector3 position;
+        public float radius;
+        public Color color;
+    }
+    private List<GizmoDebugData> gizmoVisuals = new List<GizmoDebugData>();
 
     public void RequestSplineSpawn()
     {
@@ -79,10 +81,7 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         CheckForNewSplinesAndSpawn();
     }
 
-    // =================================================================================
-    // FUNCTION 1: CHECK FOR NEW SPLINES (DEMOLISH & NEW BUILD)
-    // =================================================================================
-    [ContextMenu("Check For New Splines And Spawn")]
+    [ContextMenu("Check for new Splines and Spawn")]
     public void CheckForNewSplinesAndSpawn()
     {
         if (Application.isPlaying && multiSplineDrawer != null && multiSplineDrawer.IsDrawingActive)
@@ -95,14 +94,11 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
 
         System.Random rng = new System.Random();
 
-        // STEP 1: RÄUME ALLE STRASSEN AUF
-        // Jedes Mal, wenn eine Straße fertig wird, prüfen wir JEDEN Spline auf Kollisionen mit alten Häusern
         for (int i = 0; i < splineContainer.Splines.Count; i++)
         {
             DemolishObjectsInWayOfSpline(i);
         }
 
-        // STEP 2: SPAWNE NEUE HÄUSER NUR AN NEUEN STRASSEN
         for (int i = 0; i < splineContainer.Splines.Count; i++)
         {
             if (i >= processedSplineCount)
@@ -114,7 +110,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
             }
         }
 
-        // Counter auf den aktuellen Stand bringen
         processedSplineCount = splineContainer.Splines.Count;
     }
 
@@ -126,12 +121,10 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         if (splineLength <= 0) return;
 
         float halfRoadWidth = (multiSplineDrawer != null) ? multiSplineDrawer.splineWidth * 0.5f : 1.0f;
-
         float checkStep = 0.5f;
         float currentDistance = 0f;
         int demolishCount = 0;
 
-        // Erhöhte Box-Höhe (Y), um schief stehende VR-Objekte oder komplexe Prefabs sicher zu treffen
         Vector3 roadCheckHalfSize = new Vector3(halfRoadWidth, 10.0f, checkStep * 0.5f);
 
         LayerMask combinedLayers = 0;
@@ -154,12 +147,10 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                 {
                     if (col.gameObject != splineContainer.gameObject)
                     {
-                        // FIX 1: Greife das NetworkObject rigoros aus der Root oder den Parents ab
                         NetworkObject netObj = col.GetComponentInParent<NetworkObject>();
 
                         if (netObj != null)
                         {
-                            // Aus der internen Liste austragen, falls es von diesem Spawner stammte
                             if (spawnedNetworkDecoObjects.Contains(netObj))
                             {
                                 spawnedNetworkDecoObjects.Remove(netObj);
@@ -170,7 +161,7 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                             if (Application.isPlaying)
                             {
                                 if (netObj.IsSpawned)
-                                    netObj.Despawn(true); // Über Netcode für alle VR-Brillen weglöschen
+                                    netObj.Despawn(true);
                                 else
                                     Destroy(netObj.gameObject);
                             }
@@ -191,9 +182,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         }
     }
 
-    // =================================================================================
-    // FUNCTION 2: SPAWNING FOR A SPECIFIC CONFIGURATION GROUP
-    // =================================================================================
     private void SpawnGroupForSingleSpline(int splineIndex, SpawnGroupConfiguration group, System.Random rng)
     {
         if (splineContainer == null || group.objectPrefabs == null || group.objectPrefabs.Count == 0) return;
@@ -219,12 +207,12 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
 
                 if (group.spawnOnRightSide)
                 {
-                    TryPlaceSideObject((Vector3)worldPos, rightVector, true, group, rng);
+                    TryPlaceSideObject(splineIndex, (Vector3)worldPos, rightVector, true, group, rng);
                 }
 
                 if (group.spawnOnLeftSide)
                 {
-                    TryPlaceSideObject((Vector3)worldPos, rightVector, false, group, rng);
+                    TryPlaceSideObject(splineIndex, (Vector3)worldPos, rightVector, false, group, rng);
                 }
             }
 
@@ -237,7 +225,7 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         }
     }
 
-    private void TryPlaceSideObject(Vector3 roadCenter, Vector3 rightDirection, bool isRightSide, SpawnGroupConfiguration group, System.Random rng)
+    private void TryPlaceSideObject(int currentSplineIndex, Vector3 roadCenter, Vector3 rightDirection, bool isRightSide, SpawnGroupConfiguration group, System.Random rng)
     {
         int randomIndex = rng.Next(0, group.objectPrefabs.Count);
         GameObject randomPrefab = group.objectPrefabs[randomIndex];
@@ -271,7 +259,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         float rotatedObjectHalfWidth = maxProj;
 
         float halfRoadWidth = (multiSplineDrawer != null) ? multiSplineDrawer.splineWidth * 0.5f : 0f;
-
         float totalOffset = halfRoadWidth + group.spacingFromRoad + rotatedObjectHalfWidth;
 
         Vector3 spawnDirection = isRightSide ? rightDirection : -rightDirection;
@@ -284,30 +271,91 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         checkBoxExtents.z += group.spawnInterval * 0.4f;
         checkBoxExtents.y += 0.5f;
 
-        // FIX 2: GLOBALE DISTANZ-VALIDIERUNG GEGEN ALLE NETCODE OBJEKTE IN DER SZENE
-        // Verhindert verlässlicher als Physics.CheckBox, dass Häuser aufeinander klatschen.
-        if (Application.isPlaying)
+        // ---------------------------------------------------------------------------------
+        // ULTIMATE SPLINE-DISTANCE CHECK (Bypasses Physics/Collider Bugs entirely)
+        // ---------------------------------------------------------------------------------
+        // Calculate the 4 world-space base corners of the actual house prefab
+        Vector3 objExtents = (col.size * microScaleFactor) * 0.5f;
+        Vector3 objCenterOffset = Vector3.Scale(col.center, targetScale);
+        Vector3 finalCenter = spawnPosition + spawnRotation * objCenterOffset;
+
+        Vector3[] houseCheckPoints = new Vector3[9];
+        houseCheckPoints[0] = finalCenter;
+        houseCheckPoints[1] = finalCenter + spawnRotation * new Vector3(objExtents.x, 0, objExtents.z);
+        houseCheckPoints[2] = finalCenter + spawnRotation * new Vector3(-objExtents.x, 0, objExtents.z);
+        houseCheckPoints[3] = finalCenter + spawnRotation * new Vector3(objExtents.x, 0, -objExtents.z);
+        houseCheckPoints[4] = finalCenter + spawnRotation * new Vector3(-objExtents.x, 0, -objExtents.z);
+        houseCheckPoints[5] = finalCenter + spawnRotation * new Vector3(objExtents.x, 0, 0);
+        houseCheckPoints[6] = finalCenter + spawnRotation * new Vector3(-objExtents.x, 0, 0);
+        houseCheckPoints[7] = finalCenter + spawnRotation * new Vector3(0, 0, objExtents.z);
+        houseCheckPoints[8] = finalCenter + spawnRotation * new Vector3(0, 0, -objExtents.z);
+
+        for (int s = 0; s < splineContainer.Splines.Count; s++)
         {
-            float spawnSafetyRadius = group.spawnInterval * 0.85f;
+            // TARGETED FIX: Ignore the road this house is actually supposed to sit next to!
+            if (s == currentSplineIndex) continue;
 
-            // Hol dir JEDES aktive NetworkObject in der Szene (performant in Unity 6)
-            NetworkObject[] allNetObjects = FindObjectsByType<NetworkObject>(FindObjectsInactive.Exclude);
+            var targetSpline = splineContainer.Splines[s];
 
-            foreach (var netObj in allNetObjects)
+            foreach (Vector3 point in houseCheckPoints)
             {
-                // Ignoriere den Spawner, Hände oder die Straße selbst
-                if (netObj == this.NetworkObject || netObj.gameObject == splineContainer.gameObject)
-                    continue;
+                float3 localPoint = splineContainer.transform.InverseTransformPoint(point);
 
-                // Wenn ein beliebiges Netzwerk-Objekt (Haus) zu nah dran ist -> Nicht bauen!
-                if (Vector3.Distance(spawnPosition, netObj.transform.position) < spawnSafetyRadius)
+                SplineUtility.GetNearestPoint(targetSpline, localPoint, out float3 nearestLocalPos, out float t);
+                Vector3 nearestWorldPos = splineContainer.transform.TransformPoint(nearestLocalPos);
+
+                float distanceToRoadCenter = Vector2.Distance(new Vector2(point.x, point.z), new Vector2(nearestWorldPos.x, nearestWorldPos.z));
+
+                if (distanceToRoadCenter < (halfRoadWidth + 0.3f))
                 {
+                    // Hit an INTERSECTING road (not its own!). Skip spawning.
                     return;
                 }
             }
         }
 
-        // Physik-Backup-Check gegen statische Umweltobjekte
+        // ---------------------------------------------------------------------------------
+        // BEIBEHALTEN: METHODE 2 – Dynamic clearance check against other spawned objects
+        // ---------------------------------------------------------------------------------
+        if (Application.isPlaying)
+        {
+            float scaledX = col.size.x * microScaleFactor;
+            float scaledZ = col.size.z * microScaleFactor;
+            float prefabDiagonal = Mathf.Sqrt(scaledX * scaledX + scaledZ * scaledZ);
+            float dynamicSafetyRadius = (prefabDiagonal * 0.5f) * 1.05f;
+
+            NetworkObject[] allNetObjects = FindObjectsByType<NetworkObject>(FindObjectsInactive.Exclude);
+
+            foreach (var netObj in allNetObjects)
+            {
+                if (netObj == this.NetworkObject || netObj.gameObject == splineContainer.gameObject)
+                    continue;
+
+                bool isSameGroup = false;
+                if (group.objectsFolder != null && netObj.transform.IsChildOf(group.objectsFolder))
+                {
+                    isSameGroup = true;
+                }
+                else
+                {
+                    foreach (var prefab in group.objectPrefabs)
+                    {
+                        if (netObj.gameObject.name.StartsWith(prefab.name))
+                        {
+                            isSameGroup = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (isSameGroup && Vector3.Distance(spawnPosition, netObj.transform.position) < dynamicSafetyRadius)
+                {
+                    return; // Space occupied by another deco object, skip spawning
+                }
+            }
+        }
+
+        // Final environment collision check (avoidance layers)
         if (!Physics.CheckBox(spawnPosition, checkBoxExtents, spawnRotation, group.avoidanceLayers))
         {
             GameObject newObj = Instantiate(randomPrefab, spawnPosition, spawnRotation);
@@ -349,12 +397,23 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                 NetworkObject netObj = newObj.GetComponent<NetworkObject>();
                 if (netObj != null) spawnedNetworkDecoObjects.Add(netObj);
             }
+
+            // Caching for Editor preview
+            float sX = col.size.x * microScaleFactor;
+            float sZ = col.size.z * microScaleFactor;
+            float diag = Mathf.Sqrt(sX * sX + sZ * sZ);
+            float finalRadius = (diag * 0.5f) * 1.05f;
+
+            Color groupColor = Color.cyan;
+            if (!string.IsNullOrEmpty(group.groupName))
+            {
+                float hue = Mathf.Abs(group.groupName.GetHashCode() % 100) / 100f;
+                groupColor = Color.HSVToRGB(hue, 0.8f, 0.9f);
+            }
+
+            gizmoVisuals.Add(new GizmoDebugData { position = spawnPosition, radius = finalRadius, color = groupColor });
         }
     }
-
-    // =================================================================================
-    // FUNCTION 3: CLEAR ALL
-    // =================================================================================
     [ContextMenu("Clear All Spawned Objects")]
     public void ClearAllSpawnedObjects()
     {
@@ -380,8 +439,10 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         }
 
         spawnedNetworkDecoObjects.Clear();
+        gizmoVisuals.Clear(); // Clear the gizmos
         processedSplineCount = 0;
         Debug.Log("All multi-pool objects generated by this spawner have been successfully cleared!");
+
     }
 
     [ContextMenu("Clear and Check")]
@@ -389,5 +450,36 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
     {
         ClearAllSpawnedObjects();
         CheckForNewSplinesAndSpawn();
+    }
+
+
+    // =================================================================================
+    // GIZMOS VISUALIZATION
+    // =================================================================================
+    private void OnDrawGizmosSelected()
+    {
+        if (gizmoVisuals == null || gizmoVisuals.Count == 0) return;
+
+        foreach (var debugData in gizmoVisuals)
+        {
+            Gizmos.color = debugData.color;
+
+            // Draw the outer safety radius boundary as a flat circle
+            int segments = 24;
+            Vector3 lastPoint = debugData.position + new Vector3(debugData.radius, 0, 0);
+
+            for (int i = 1; i <= segments; i++)
+            {
+                float angle = (i / (float)segments) * Mathf.PI * 2f;
+                Vector3 nextPoint = debugData.position + new Vector3(Mathf.Cos(angle) * debugData.radius, 0, Mathf.Sin(angle) * debugData.radius);
+
+                Gizmos.DrawLine(lastPoint, nextPoint);
+                lastPoint = nextPoint;
+            }
+
+            // Draw a semi-transparent solid core in the center of the zone
+            Gizmos.color = new Color(debugData.color.r, debugData.color.g, debugData.color.b, 0.2f);
+            Gizmos.DrawSphere(debugData.position, debugData.radius * 0.15f);
+        }
     }
 }

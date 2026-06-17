@@ -247,7 +247,7 @@ MonoBehaviour:
   sphereRadius: 0.05
   vehicleLayer:
     serializedVersion: 2
-    m_Bits: 5120
+    m_Bits: 9216
   network: {fileID: 0}
   splineContainer: {fileID: 0}
   homeNode: {fileID: 0}
@@ -371,7 +371,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 3826457412
+  GlobalObjectIdHash: 324608419
   InScenePlacedSourceGlobalObjectIdHash: 0
   DeferredDespawnTick: 0
   Ownership: 1

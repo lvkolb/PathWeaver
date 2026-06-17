@@ -2,8 +2,7 @@ using UnityEngine;
 using UnityEngine.Splines;
 using System.Collections.Generic;
 using Unity.Mathematics;
-using Unity.Netcode; // Required for Netcode
-
+using Unity.Netcode;
 public class RandomObjectSpawnerManager : NetworkBehaviour
 {
     // A custom class to pair a Prefab with its custom spawn weight configuration
@@ -135,6 +134,8 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
     {
         if (Application.isPlaying && !IsServer) return;
         ValidateExistingBuildings();
+
+        SpawnObjectsInternal();
     }
 
     [ContextMenu("Clear All Objects")]

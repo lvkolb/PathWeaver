@@ -4,12 +4,13 @@ using System.Reflection;
 using UnityEngine;
 using UnityEngine.Splines;
 using Unity.Mathematics;
+using Unity.Netcode;
 
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
-public class MultiSplineDrawer : MonoBehaviour
+public class MultiSplineDrawer : NetworkBehaviour
 {
     // Encapsulation for multiple sources
     [System.Serializable]
@@ -207,21 +208,82 @@ public class MultiSplineDrawer : MonoBehaviour
 
         foreach (var session in drawingSessions)
         {
+            if (session.currentPoints.Count > 0)
+            {
+                // When we're in multiplayer mode, we send the points to everyone
+                if (Application.isPlaying)
+                {
+                    Vector3[] pointsArray = session.currentPoints.ToArray();
+                    if (IsServer)
+                    {
+                        // As the host: Send directly to all clients
+                        SyncSplineAndMeshClientRpc(pointsArray);
+                    }
+                    else if (IsClient)
+                    {
+                        // As the client: Send the points to the server
+                        SubmitSplinePointsServerRpc(pointsArray);
+                    }
+                }
+            }
+
             session.currentPoints.Clear();
             session.activeSpline = null;
         }
 
-        ConnectAllInternalSplines();
+        // Local fallback (or for editor mode)
+        if (!Application.isPlaying)
+        {
+            FinalizeLocalRoadGeneration();
+        }
+    }
 
-        // Run defaults immediately when stopped
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void SubmitSplinePointsServerRpc(Vector3[] points)
+    {
+        // The server receives the client's points and forwards them to EVERYONE
+        SyncSplineAndMeshClientRpc(points);
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    private void SyncSplineAndMeshClientRpc(Vector3[] points)
+    {
+        // IMPORTANT: If the host is to spawn the houses, ONLY the server must do so!
+        // As this RPC is received by all devices, each one executes it for its own mesh.
+
+        // 1. Create a new spline on this device
+        Spline networkSpline = new Spline();
+        if (splineContainer == null) splineContainer = targetSpline.GetComponent<SplineContainer>();
+        splineContainer.AddSpline(networkSpline);
+        PatchAllWidthComponents(splineContainer.Splines.Count - 1);
+
+        // 2. Enter points into the spline
+        foreach (Vector3 worldPos in points)
+        {
+            Vector3 localPos = splineContainer.transform.InverseTransformPoint(worldPos);
+            networkSpline.Add(new BezierKnot(localPos));
+        }
+
+        // 3. Generate a road mesh on this device
+        ConnectAllInternalSplines();
+        RebuildAllRoadComponents();
         DefaultNetworkAndVehicleUpdates();
 
-        // FIX: Trigger the Spawner ONLY when drawing has officially stopped
-        AlongSplineObjectSpawner spawner = FindAnyObjectByType<AlongSplineObjectSpawner>();
-        if (spawner != null)
+        // 4. ONLY the server now triggers the house spawner, as it now has exactly the same splines!
+        if (IsServer)
         {
-            spawner.RequestSplineSpawn();
+            AlongSplineObjectSpawner spawner = FindAnyObjectByType<AlongSplineObjectSpawner>();
+            if (spawner != null)
+            {
+                spawner.CheckForNewSplinesAndSpawn(); // Let’s run it straight away, as we’re already on the server!
+            }
         }
+    }
+
+    private void FinalizeLocalRoadGeneration()
+    {
+        ConnectAllInternalSplines();
+        DefaultNetworkAndVehicleUpdates();
     }
 
     private void Update()

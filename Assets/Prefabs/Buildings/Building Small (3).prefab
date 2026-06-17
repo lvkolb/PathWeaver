@@ -280,6 +280,7 @@ GameObject:
   m_Component:
   - component: {fileID: 780045785665674801}
   - component: {fileID: 7597364729390068142}
+  - component: {fileID: 2744316149687099698}
   m_Layer: 8
   m_Name: Building Small (3)
   m_TagString: Untagged
@@ -327,6 +328,31 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 14, y: 17, z: 14.5}
   m_Center: {x: 0, y: 8.5, z: 0}
+--- !u!114 &2744316149687099698
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9208091039120974887}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 0
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!1001 &226663439633728957
 PrefabInstance:
   m_ObjectHideFlags: 0

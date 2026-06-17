@@ -165,11 +165,10 @@ public class VehicleManager : NetworkBehaviour
 
         for (int i = 0; i < amountToSpawn; i++)
         {
+            // 1. Instantiate completely without a parent initially (null)
             GameObject vehicle = Instantiate(vehiclePrefabs[Random.Range(0, vehiclePrefabs.Length)]);
             vehicle.name = $"Car_{activeNetworkVehicles.Count}";
-            vehicle.transform.SetParent(pathParent);
 
-            // Sync random colors across the network via ClientRpc so everyone sees the same car colors
             Color randomColor = Random.ColorHSV(0f, 1f, 1f, 1f, 0.5f, 1f);
 
             if (Application.isPlaying)
@@ -177,11 +176,26 @@ public class VehicleManager : NetworkBehaviour
                 NetworkObject netObj = vehicle.GetComponent<NetworkObject>();
                 if (netObj != null)
                 {
-                    // 1. Spawn over network so all connected VR players see the car
+                    // 2. Spawn over the network FIRST
                     netObj.Spawn(true);
                     activeNetworkVehicles.Add(netObj);
 
-                    // 2. Sync color visually
+                    // 3. Set the parent safely AFTER spawning via Netcode API
+                    if (pathParent != null)
+                    {
+                        NetworkObject parentNetObj = pathParent.GetComponent<NetworkObject>();
+                        if (parentNetObj != null && parentNetObj.IsSpawned)
+                        {
+                            netObj.TrySetParent(pathParent);
+                        }
+                        else
+                        {
+                            // Fallback: Local parenting if pathParent lacks a NetworkObject
+                            vehicle.transform.SetParent(pathParent);
+                        }
+                    }
+
+                    // 4. Sync color visually
                     ApplyCarColorClientRpc(netObj.NetworkObjectId, randomColor);
                 }
                 else
@@ -212,6 +226,7 @@ public class VehicleManager : NetworkBehaviour
             // Fallback for editor mode instantiation
             if (!Application.isPlaying)
             {
+                vehicle.transform.SetParent(pathParent);
                 Renderer carRenderer = vehicle.GetComponentInChildren<Renderer>();
                 if (carRenderer != null) carRenderer.material.color = randomColor;
 

@@ -169,8 +169,6 @@ public class VehicleManager : NetworkBehaviour
             GameObject vehicle = Instantiate(vehiclePrefabs[Random.Range(0, vehiclePrefabs.Length)]);
             vehicle.name = $"Car_{activeNetworkVehicles.Count}";
 
-            Color randomColor = Random.ColorHSV(0f, 1f, 1f, 1f, 0.5f, 1f);
-
             if (Application.isPlaying)
             {
                 NetworkObject netObj = vehicle.GetComponent<NetworkObject>();
@@ -194,9 +192,6 @@ public class VehicleManager : NetworkBehaviour
                             vehicle.transform.SetParent(pathParent);
                         }
                     }
-
-                    // 4. Sync color visually
-                    ApplyCarColorClientRpc(netObj.NetworkObjectId, randomColor);
                 }
                 else
                 {
@@ -227,27 +222,12 @@ public class VehicleManager : NetworkBehaviour
             if (!Application.isPlaying)
             {
                 vehicle.transform.SetParent(pathParent);
-                Renderer carRenderer = vehicle.GetComponentInChildren<Renderer>();
-                if (carRenderer != null) carRenderer.material.color = randomColor;
 
                 NetworkObject netObj = vehicle.GetComponent<NetworkObject>();
                 if (netObj != null) activeNetworkVehicles.Add(netObj);
             }
 
             yield return new WaitForSeconds(spawnDelay);
-        }
-    }
-
-    [Rpc(SendTo.ClientsAndHost)]
-    private void ApplyCarColorClientRpc(ulong networkObjectId, Color color)
-    {
-        if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out NetworkObject netObj))
-        {
-            Renderer carRenderer = netObj.GetComponentInChildren<Renderer>();
-            if (carRenderer != null)
-            {
-                carRenderer.material.color = color;
-            }
         }
     }
 

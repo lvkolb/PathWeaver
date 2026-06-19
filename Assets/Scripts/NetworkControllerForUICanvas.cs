@@ -59,6 +59,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
         if (hideUIButton != null) hideUIButton.onClick.RemoveListener(HideUI);
     }
 
+    [ContextMenu("Start Host")]
     public async void Create()
     {
         if (codeDisplayLabel != null) codeDisplayLabel.text = "Creating session...";

@@ -195,7 +195,7 @@ MonoBehaviour:
   homeNode: {fileID: 0}
   workNode: {fileID: 0}
   headingToWork: 1
-  audioSource: {fileID: 5321836014839923207, guid: 4eaf3955404fabb42980abc87a11d736, type: 3}
+  audioSource: {fileID: 7996228750807619686}
   stopSounds:
   - {fileID: 8300000, guid: 522ea05b81795554dbdf5a2ebfb677fc, type: 3}
   - {fileID: 8300000, guid: 30a9b24ff4cdec64186bf0e0ec5b0579, type: 3}
@@ -215,7 +215,7 @@ AudioSource:
   serializedVersion: 4
   OutputAudioMixerGroup: {fileID: 0}
   m_audioClip: {fileID: 0}
-  m_Resource: {fileID: 0}
+  m_Resource: {fileID: 8300000, guid: 522ea05b81795554dbdf5a2ebfb677fc, type: 3}
   m_PlayOnAwake: 1
   m_Volume: 0.03
   m_Pitch: 1

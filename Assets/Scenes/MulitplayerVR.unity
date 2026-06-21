@@ -9707,6 +9707,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 34aeaed3f5528254fb438810af654ed5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NetworkControllerCanvas
+  uiPanel: {fileID: 1603270200}
   hostButton: {fileID: 1315611905}
   clientButton: {fileID: 505075849}
   joinCodeInput: {fileID: 1540518207}

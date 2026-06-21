@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 281845421759024130}
   - component: {fileID: 4366331840077426172}
+  - component: {fileID: 9212012913641248884}
   m_Layer: 11
   m_Name: Tree (2)
   m_TagString: Untagged
@@ -56,6 +57,31 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 7, y: 6.65, z: 7.1}
   m_Center: {x: 0, y: 3.25, z: 0}
+--- !u!114 &9212012913641248884
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4730145889651191399}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 0
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!1001 &515845363332079585
 PrefabInstance:
   m_ObjectHideFlags: 0

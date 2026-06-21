@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 9181161576884296631}
   - component: {fileID: 3034611083711258844}
   - component: {fileID: 8329951632288020935}
-  m_Layer: 12
+  m_Layer: 13
   m_Name: Cylinder
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -100,8 +100,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3208591811424350508}
   - component: {fileID: 2075211848266365061}
-  - component: {fileID: 8868127195677107830}
-  m_Layer: 12
+  m_Layer: 13
   m_Name: Jammer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -147,19 +146,3 @@ CapsuleCollider:
   m_Height: 6
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &8868127195677107830
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8171807019051335979}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d4919a567b006474baba4d4b9200e57b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Player
-  computerXRManager: {fileID: 0}
-  xrCameraRig: {fileID: 0}
-  mainCamera: {fileID: 0}
-  posY: 0

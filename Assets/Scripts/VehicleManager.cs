@@ -2,8 +2,9 @@ using UnityEngine;
 using UnityEngine.Splines;
 using System.Collections.Generic;
 using System.Collections;
+using Unity.Netcode;
 
-public class VehicleManager : MonoBehaviour
+public class VehicleManager : NetworkBehaviour
 {
     [Header("Settings")]
     public GameObject[] vehiclePrefabs;
@@ -18,14 +19,9 @@ public class VehicleManager : MonoBehaviour
     [Header("Spawn Settings")]
     public float spawnDelay = 0.5f;
 
-    private List<GameObject> activeVehicles = new List<GameObject>();
+    // Track instantiated NetworkObjects to handle network destruction cleanly
+    private List<NetworkObject> activeNetworkVehicles = new List<NetworkObject>();
 
-    [ContextMenu("Spawn Random Traffic")]
-    public void SpawnTraffic()
-    {
-        StartCoroutine(SpawnTrafficCoroutine());
-    }
-    // Add this struct at the top of the class
     private struct CarSnapshot
     {
         public CarAgent agent;
@@ -38,16 +34,101 @@ public class VehicleManager : MonoBehaviour
 
     private List<CarSnapshot> _snapshots = new List<CarSnapshot>();
 
+    // =================================================================================
+    // MULTIPLAYER SERVER/CLIENT ROUTINE
+    // =================================================================================
+
     /// <summary>
-    /// Call this BEFORE RebuildGraph(). Saves world positions while nodes still exist.
+    /// Call this from a VR Button or UI Event. Works for both Host and Clients!
     /// </summary>
+    [ContextMenu("Spawn Random Traffic")]
+    public void SpawnTraffic()
+    {
+        if (Application.isPlaying)
+        {
+            if (IsServer)
+            {
+                StartCoroutine(SpawnTrafficCoroutine());
+            }
+            else if (IsClient)
+            {
+                RequestSpawnTrafficRpc();
+            }
+        }
+        else
+        {
+            // Editor execution fallback
+            StartCoroutine(SpawnTrafficCoroutine());
+        }
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void RequestSpawnTrafficRpc()
+    {
+        StartCoroutine(SpawnTrafficCoroutine());
+    }
+
+    /// <summary>
+    /// Safely requests the clearance of all traffic from Host or Client.
+    /// </summary>
+    [ContextMenu("Clear Traffic")]
+    public void ClearTraffic()
+    {
+        if (Application.isPlaying)
+        {
+            if (IsServer)
+            {
+                ClearTrafficInternal();
+            }
+            else if (IsClient)
+            {
+                RequestClearTrafficRpc();
+            }
+        }
+        else
+        {
+            ClearTrafficInternal();
+        }
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void RequestClearTrafficRpc()
+    {
+        ClearTrafficInternal();
+    }
+
+    private void ClearTrafficInternal()
+    {
+        for (int i = activeNetworkVehicles.Count - 1; i >= 0; i--)
+        {
+            NetworkObject netObj = activeNetworkVehicles[i];
+            if (netObj != null)
+            {
+                if (Application.isPlaying)
+                {
+                    if (netObj.IsSpawned) netObj.Despawn(true);
+                    else Destroy(netObj.gameObject);
+                }
+                else
+                {
+                    DestroyImmediate(netObj.gameObject);
+                }
+            }
+        }
+        activeNetworkVehicles.Clear();
+    }
+
+    // =================================================================================
+    // CORE LOGIC & REPLICATION
+    // =================================================================================
+
     public void SnapshotVehiclePositions()
     {
         _snapshots.Clear();
-        foreach (GameObject vehicle in activeVehicles)
+        foreach (NetworkObject netVehicle in activeNetworkVehicles)
         {
-            if (vehicle == null) continue;
-            CarAgent agent = vehicle.GetComponent<CarAgent>();
+            if (netVehicle == null) continue;
+            CarAgent agent = netVehicle.GetComponent<CarAgent>();
             if (agent == null) continue;
 
             _snapshots.Add(new CarSnapshot
@@ -61,6 +142,7 @@ public class VehicleManager : MonoBehaviour
             });
         }
     }
+
     private IEnumerator SpawnTrafficCoroutine()
     {
         TrafficNetwork network = Object.FindAnyObjectByType<TrafficNetwork>();
@@ -83,9 +165,41 @@ public class VehicleManager : MonoBehaviour
 
         for (int i = 0; i < amountToSpawn; i++)
         {
+            // 1. Instantiate completely without a parent initially (null)
             GameObject vehicle = Instantiate(vehiclePrefabs[Random.Range(0, vehiclePrefabs.Length)]);
-            vehicle.name = $"Car_{activeVehicles.Count}";
-            vehicle.transform.SetParent(pathParent);
+            vehicle.name = $"Car_{activeNetworkVehicles.Count}";
+
+            if (Application.isPlaying)
+            {
+                NetworkObject netObj = vehicle.GetComponent<NetworkObject>();
+                if (netObj != null)
+                {
+                    // 2. Spawn over the network FIRST
+                    netObj.Spawn(true);
+                    activeNetworkVehicles.Add(netObj);
+
+                    // 3. Set the parent safely AFTER spawning via Netcode API
+                    if (pathParent != null)
+                    {
+                        NetworkObject parentNetObj = pathParent.GetComponent<NetworkObject>();
+                        if (parentNetObj != null && parentNetObj.IsSpawned)
+                        {
+                            netObj.TrySetParent(pathParent);
+                        }
+                        else
+                        {
+                            // Fallback: Local parenting if pathParent lacks a NetworkObject
+                            vehicle.transform.SetParent(pathParent);
+                        }
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"Vehicle Prefab is missing a NetworkObject component!");
+                    Destroy(vehicle);
+                    yield break;
+                }
+            }
 
             CarAgent agent = vehicle.GetComponent<CarAgent>();
             if (agent != null)
@@ -94,7 +208,6 @@ public class VehicleManager : MonoBehaviour
                 agent.splineContainer = laneContainer;
                 agent.baseSpeed = Random.Range(0.5f, 1f);
 
-                // Assign distinct random start and end positions
                 TrafficNode startNode = network.allNodes[Random.Range(0, network.allNodes.Count)];
                 TrafficNode workNode;
                 do
@@ -105,27 +218,19 @@ public class VehicleManager : MonoBehaviour
                 agent.InitializeAgent(startNode, workNode);
             }
 
-            Renderer carRenderer = vehicle.GetComponentInChildren<Renderer>();
-            if (carRenderer != null)
-                carRenderer.material.color = Random.ColorHSV(0f, 1f, 1f, 1f, 0.5f, 1f);
+            // Fallback for editor mode instantiation
+            if (!Application.isPlaying)
+            {
+                vehicle.transform.SetParent(pathParent);
 
-            activeVehicles.Add(vehicle);
+                NetworkObject netObj = vehicle.GetComponent<NetworkObject>();
+                if (netObj != null) activeNetworkVehicles.Add(netObj);
+            }
+
             yield return new WaitForSeconds(spawnDelay);
         }
     }
 
-    /*public void RecalculateAllVehiclePaths()
-    {
-        foreach (GameObject vehicle in activeVehicles)
-        {
-            if (vehicle == null) continue;
-            CarAgent agent = vehicle.GetComponent<CarAgent>();
-            if (agent != null) agent.RecalculatePath();
-        }
-    }*/
-    /// <summary>
-    /// Call this AFTER RebuildGraph(). Restores cars using the cached positions.
-    /// </summary>
     public void RecalculateAllVehiclePaths()
     {
         TrafficNetwork net = FindAnyObjectByType<TrafficNetwork>();
@@ -139,14 +244,5 @@ public class VehicleManager : MonoBehaviour
                                          snap.headingToWork);
         }
         _snapshots.Clear();
-    }
-    [ContextMenu("Clear Traffic")]
-    public void ClearTraffic()
-    {
-        foreach (var v in activeVehicles)
-        {
-            if (v != null) Destroy(v);
-        }
-        activeVehicles.Clear();
     }
 }

@@ -100,6 +100,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6281137013139719156}
   - component: {fileID: 7004312835965879735}
+  - component: {fileID: -6268163998450979228}
   m_Layer: 8
   m_Name: Building Fast Food
   m_TagString: Untagged
@@ -146,6 +147,31 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 11.551474, y: 9.97566, z: 10.674342}
   m_Center: {x: 0.049910545, y: 4.9065704, z: -0.19085646}
+--- !u!114 &-6268163998450979228
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7333037302664497762}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 0
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!1 &8148391700695739956
 GameObject:
   m_ObjectHideFlags: 0

@@ -2,8 +2,8 @@ using UnityEngine;
 using UnityEngine.Splines;
 using System.Collections.Generic;
 using Unity.Mathematics;
-
-public class RandomObjectSpawnerManager : MonoBehaviour
+using Unity.Netcode;
+public class RandomObjectSpawnerManager : NetworkBehaviour
 {
     // A custom class to pair a Prefab with its custom spawn weight configuration
     [System.Serializable]
@@ -44,9 +44,9 @@ public class RandomObjectSpawnerManager : MonoBehaviour
     [Header("Area Reference")]
     public Transform areaObject;
 
-    private List<GameObject> spawnedObjects = new List<GameObject>();
+    // Track network objects using NetworkObject references to support network destruction
+    private List<NetworkObject> spawnedNetworkObjects = new List<NetworkObject>();
 
-    // Automatically triggered whenever values change in the inspector
     private void OnValidate()
     {
         if (prefabsToSpawn == null) return;
@@ -64,33 +64,107 @@ public class RandomObjectSpawnerManager : MonoBehaviour
         }
     }
 
+    // =================================================================================
+    // MULTIPLAYER SERVER/CLIENT ROUTINE (Unity 6 Compatible)
+    // =================================================================================
+
+    /// <summary>
+    /// Call this method from your VR UI or input script to trigger the spawn for everyone.
+    /// </summary>
+    public void RequestRandomObjectSpawn()
+    {
+        if (Application.isPlaying)
+        {
+            if (IsServer)
+            {
+                SpawnObjectsInternal();
+            }
+            else if (IsClient)
+            {
+                TriggerRandomSpawnRpc();
+            }
+        }
+        else
+        {
+            // Fallback for Unity Editor mode outside of Play Mode
+            SpawnObjectsInternal();
+        }
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void TriggerRandomSpawnRpc()
+    {
+        SpawnObjectsInternal();
+    }
+
+    /// <summary>
+    /// Call this method to clear objects from either Server or Client.
+    /// </summary>
+    public void RequestClearAllObjects()
+    {
+        if (Application.isPlaying)
+        {
+            if (IsServer)
+            {
+                ClearAllObjectsInternal();
+            }
+            else if (IsClient)
+            {
+                TriggerClearAllRpc();
+            }
+        }
+        else
+        {
+            ClearAllObjectsInternal();
+        }
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void TriggerClearAllRpc()
+    {
+        ClearAllObjectsInternal();
+    }
+
+    // =================================================================================
+    // INTERNAL CORE LOGIC (Executed on Server at Runtime)
+    // =================================================================================
+
     [ContextMenu("Refresh object spawning")]
     public void RefreshObjectSpawning()
     {
-        // First, remove the houses that are currently in the way
+        if (Application.isPlaying && !IsServer) return;
         ValidateExistingBuildings();
+
+        SpawnObjectsInternal();
     }
 
     [ContextMenu("Clear All Objects")]
     public void ClearAllObjects()
     {
-        // We iterate through the list backwards to ensure it is safely deleted
-        for (int i = spawnedObjects.Count - 1; i >= 0; i--)
-        {
-            GameObject building = spawnedObjects[i];
+        RequestClearAllObjects();
+    }
 
-            if (building != null)
+    private void ClearAllObjectsInternal()
+    {
+        for (int i = spawnedNetworkObjects.Count - 1; i >= 0; i--)
+        {
+            NetworkObject netObj = spawnedNetworkObjects[i];
+
+            if (netObj != null)
             {
                 if (Application.isPlaying)
-                    Destroy(building);
+                {
+                    netObj.Despawn(true);
+                }
                 else
-                    DestroyImmediate(building);
+                {
+                    DestroyImmediate(netObj.gameObject);
+                }
             }
         }
 
-        spawnedObjects.Clear();
+        spawnedNetworkObjects.Clear();
 
-        // Safety check if running in editor mode to clean remaining orphan child transform objects
         if (!Application.isPlaying && transform.childCount > 0)
         {
             Debug.Log("Cleaning up leftover child objects...");
@@ -99,48 +173,51 @@ public class RandomObjectSpawnerManager : MonoBehaviour
             foreach (GameObject child in children) DestroyImmediate(child);
         }
 
-        Debug.Log("All buildings cleared!");
+        Debug.Log("All objects cleared!");
     }
 
     private void ValidateExistingBuildings()
     {
-        int startCount = spawnedObjects.Count;
+        int startCount = spawnedNetworkObjects.Count;
         float halfRoadWidth = roadWidth * 0.5f;
 
-        for (int i = spawnedObjects.Count - 1; i >= 0; i--)
+        for (int i = spawnedNetworkObjects.Count - 1; i >= 0; i--)
         {
-            GameObject building = spawnedObjects[i];
-            if (building == null) continue;
+            NetworkObject netObj = spawnedNetworkObjects[i];
+            if (netObj == null) continue;
 
-            BoxCollider col = building.GetComponent<BoxCollider>();
+            BoxCollider col = netObj.GetComponent<BoxCollider>();
             if (col == null) continue;
 
-            Vector3 prefabScale = building.transform.localScale;
+            Vector3 prefabScale = netObj.transform.localScale;
             Vector3 halfSize = Vector3.Scale(col.size, prefabScale) * 0.5f;
             float houseSafetyRadius = Mathf.Max(halfSize.x, halfSize.z);
 
-            // Calculate exact safety clearance threshold relative to your true road borders
             float totalRequiredDistance = halfRoadWidth + spacingFromRoad + houseSafetyRadius;
 
-            // Check whether the object is too close to the road/spline boundaries
-            if (!IsPositionFarFromAllSplines(building.transform.position, totalRequiredDistance))
+            if (!IsPositionFarFromAllSplines(netObj.transform.position, totalRequiredDistance))
             {
                 if (Application.isPlaying)
-                    Destroy(building);
+                    netObj.Despawn(true);
                 else
-                    DestroyImmediate(building);
+                    DestroyImmediate(netObj.gameObject);
 
-                spawnedObjects.RemoveAt(i);
+                spawnedNetworkObjects.RemoveAt(i);
             }
         }
 
-        int removedCount = startCount - spawnedObjects.Count;
+        int removedCount = startCount - spawnedNetworkObjects.Count;
         Debug.Log($"<color=orange>Validation complete:</color> {removedCount} Buildings removed. " +
-                  $"<color=lime>Current total: {spawnedObjects.Count}</color>");
+                  $"<color=lime>Current total: {spawnedNetworkObjects.Count}</color>");
     }
 
     [ContextMenu("Spawn objects")]
     public void SpawnObjects()
+    {
+        RequestRandomObjectSpawn();
+    }
+
+    private void SpawnObjectsInternal()
     {
         if (roadSpline == null || areaObject == null || prefabsToSpawn == null || prefabsToSpawn.Count == 0) return;
 
@@ -149,12 +226,11 @@ public class RandomObjectSpawnerManager : MonoBehaviour
             roadWidth = multiSplineDrawer.splineWidth;
         }
 
-        // Calculating the area constraints (Plane standard footprint is 10 units base size)
         float halfWidth = (areaObject.localScale.x * 10f) / 2f;
         float halfLength = (areaObject.localScale.z * 10f) / 2f;
         float halfRoadWidth = roadWidth * 0.5f;
 
-        int buildingsToCreate = amount - spawnedObjects.Count;
+        int buildingsToCreate = amount - spawnedNetworkObjects.Count;
 
         for (int i = 0; i < buildingsToCreate; i++)
         {
@@ -167,7 +243,6 @@ public class RandomObjectSpawnerManager : MonoBehaviour
             Vector3 prefabScale = selectedPrefab.transform.localScale;
             Vector3 finalExtents = Vector3.Scale(col.size, prefabScale) * 0.5f;
 
-            // Apply single spacing value bounds directly across your check constraints
             float houseSafetyRadius = Mathf.Max(finalExtents.x, finalExtents.z);
             float totalRequiredDistance = halfRoadWidth + spacingFromRoad + houseSafetyRadius;
 
@@ -175,14 +250,11 @@ public class RandomObjectSpawnerManager : MonoBehaviour
             Vector3 finalPos = Vector3.zero;
             int attempts = 0;
 
-            // Box dimensions setup including safety clearance borders
             Vector3 checkBoxExtents = finalExtents;
             checkBoxExtents.x += spacingFromRoad;
             checkBoxExtents.z += spacingFromRoad;
             checkBoxExtents.y += 0.5f;
 
-            // Determine orientation beforehand based on the toggle setting
-            // Physics.CheckBox checking requires the same rotation for an accurate overlap check
             Quaternion spawnRotation = Quaternion.identity;
             if (useRandomRotation)
             {
@@ -199,7 +271,6 @@ public class RandomObjectSpawnerManager : MonoBehaviour
 
                 if (IsPositionFarFromAllSplines(testPos, totalRequiredDistance))
                 {
-                    // Pass the spawnRotation into the CheckBox so the collision detection matches the final rotation
                     if (!Physics.CheckBox(testPos, checkBoxExtents, spawnRotation, avoidanceLayers))
                     {
                         finalPos = testPos;
@@ -210,19 +281,47 @@ public class RandomObjectSpawnerManager : MonoBehaviour
 
             if (validPosFound)
             {
-                // Instantiate the object using the custom spawnRotation instead of Quaternion.identity
-                GameObject newBuilding = Instantiate(selectedPrefab, finalPos, spawnRotation, transform);
-                spawnedObjects.Add(newBuilding);
+                GameObject newBuilding = Instantiate(selectedPrefab, finalPos, spawnRotation, null);
+
+                if (Application.isPlaying)
+                {
+                    NetworkObject netObj = newBuilding.GetComponent<NetworkObject>();
+                    if (netObj != null)
+                    {
+                        netObj.Spawn(true);
+                        spawnedNetworkObjects.Add(netObj);
+
+                        NetworkObject parentNetObj = GetComponent<NetworkObject>();
+                        if (parentNetObj != null && parentNetObj.IsSpawned)
+                        {
+                            netObj.TrySetParent(transform);
+                        }
+                        else
+                        {
+                            newBuilding.transform.parent = transform;
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError($"Prefab {selectedPrefab.name} is missing a NetworkObject component!");
+                        Destroy(newBuilding);
+                    }
+                }
+                else
+                {
+                    newBuilding.transform.parent = transform;
+                    NetworkObject netObj = newBuilding.GetComponent<NetworkObject>();
+                    if (netObj != null) spawnedNetworkObjects.Add(netObj);
+                }
             }
         }
 
-        Debug.Log($"<color=lime>Done!</color> Random objects created. Current setup size: {spawnedObjects.Count}");
+        Debug.Log($"<color=lime>Done!</color> Random objects created. Current setup size: {spawnedNetworkObjects.Count}");
     }
 
     private GameObject GetWeightedRandomPrefab()
     {
         float totalWeight = 0f;
-
         foreach (var item in prefabsToSpawn)
         {
             if (item.prefab != null && item.weight > 0f)

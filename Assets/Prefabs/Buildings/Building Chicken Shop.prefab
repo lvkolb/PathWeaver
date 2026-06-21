@@ -100,6 +100,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3778200417221320984}
   - component: {fileID: 452040302470867924}
+  - component: {fileID: -165182341318793553}
   m_Layer: 8
   m_Name: Building Chicken Shop
   m_TagString: Untagged
@@ -147,6 +148,31 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 11.51169, y: 10.020222, z: 10.349408}
   m_Center: {x: 0.032014847, y: 4.903826, z: 0.18522799}
+--- !u!114 &-165182341318793553
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 792174774399910709}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 0
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!1 &2802482570245554577
 GameObject:
   m_ObjectHideFlags: 0

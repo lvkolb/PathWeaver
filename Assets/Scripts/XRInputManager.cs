@@ -1,103 +1,112 @@
 using System;
 using System.Collections.Generic;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Events;
-using UnityEngine.InputSystem;
 
-public class XRInputManager : MonoBehaviour
+public class XRInputManager : NetworkBehaviour
 {
-    // The System.Serializable class bundles the action and its events for the Inspector
     [Serializable]
-    public class XRActionMapping
+    public class LocalPrefabMapping
     {
-        [Header("Action Configuration")]
-        public string actionName = "New XR action";
-        public InputAction xrAction;
+        [Header("Link to Scene Bridge Name")]
+        [Tooltip("The exact ActionName that you defined in the GlobalInputBridge within the scene.")]
+        public string targetBridgeActionName = "YButtonAction";
 
-        [Header("Events (Press & Release)")]
-        public UnityEvent onXRHoldStart;
-        public UnityEvent onXRHoldCancel;
-
-        [Header("Special Release (Only the very first time)")]
-        public UnityEvent onXRUpOnlyFirstTime;
-
-        // Each action manages its own "First Time" status independently of the others
-        [HideInInspector] public bool hasExecutedFirstTime = false;
+        [Header("Local Prefab Events")]
+        public UnityEvent onLocalHoldStart;
+        public UnityEvent onLocalHoldCancel;
+        public UnityEvent onLocalUpOnlyFirstTime;
     }
 
-    [Header("XR Input Configurations")]
-    [SerializeField] private List<XRActionMapping> inputMappings = new List<XRActionMapping>();
+    [Header("Local Prefab Input Connections")]
+    [Tooltip("Here you can link functions that are attached to this prefab (e.g. PlayerManager).")]
+    [SerializeField] private List<LocalPrefabMapping> localMappings = new List<LocalPrefabMapping>();
 
-    private void Awake()
+    private void Start()
     {
-        // We go through all the mappings created in the Inspector and wire them up
-        foreach (var mapping in inputMappings)
+        // If the bridge exists in the scene, we link the hardware events
+        if (GlobalInputBridge.Instance != null)
         {
-            // To ensure that we access the correct mapping in the lambda expressions (+= _ =>),
-            // we need to create a local copy of the reference (C# safety)
-            var currentMapping = mapping;
-
-            currentMapping.xrAction.started += _ =>
+            foreach (var sceneMapping in GlobalInputBridge.Instance.inputMappings)
             {
-                if (currentMapping.onXRHoldStart != null)
-                    currentMapping.onXRHoldStart.Invoke();
-            };
+                var currentSceneMapping = sceneMapping;
 
-            currentMapping.xrAction.canceled += _ =>
-            {
-                // 1. Trigger a normal release event
-                if (currentMapping.onXRHoldCancel != null)
-                    currentMapping.onXRHoldCancel.Invoke();
-
-                // 2. Execute the one time event if it hasn't already run for this key
-                if (!currentMapping.hasExecutedFirstTime)
+                // 1. Hardware pressed (started)
+                currentSceneMapping.xrAction.started += _ =>
                 {
-                    if (currentMapping.onXRUpOnlyFirstTime != null)
-                        currentMapping.onXRUpOnlyFirstTime.Invoke();
+                    if (!IsOwner) return;
 
-                    currentMapping.hasExecutedFirstTime = true;
-                }
-            };
-        }
-    }
+                    // A: Executes the function in the scene (if defined there)
+                    currentSceneMapping.onXRHoldStart?.Invoke();
 
-    // Loop to activate all registered actions at once
-    private void OnEnable()
-    {
-        foreach (var mapping in inputMappings)
-        {
-            mapping.xrAction.Enable();
-        }
-    }
+                    // B: Runs the relevant functions on your local prefab
+                    TriggerLocalEvents(currentSceneMapping.actionName, "start");
+                };
 
-    // Loop for bulk deactivation
-    private void OnDisable()
-    {
-        foreach (var mapping in inputMappings)
-        {
-            mapping.xrAction.Disable();
-        }
-    }
+                // 2. Hardware released (cancelled)
+                currentSceneMapping.xrAction.canceled += _ =>
+                {
+                    if (!IsOwner) return;
 
-    // Resets the first-time trigger for ALL actions.
-    public void ResetAllFirstTimeTriggers()
-    {
-        foreach (var mapping in inputMappings)
-        {
-            mapping.hasExecutedFirstTime = false;
-        }
-    }
+                    // A: Executes the functions in the scene
+                    currentSceneMapping.onXRHoldCancel?.Invoke();
 
-    // Resets the first-time trigger for a specific action by its name.
-    public void ResetFirstTimeTriggerByName(string nameOfAction)
-    {
-        foreach (var mapping in inputMappings)
-        {
-            if (mapping.actionName == nameOfAction)
-            {
-                mapping.hasExecutedFirstTime = false;
-                break;
+                    if (!currentSceneMapping.hasExecutedFirstTime)
+                    {
+                        currentSceneMapping.onXRUpOnlyFirstTime?.Invoke();
+                        currentSceneMapping.hasExecutedFirstTime = true;
+                    }
+
+                    // B: Runs the relevant functions on your local prefab
+                    TriggerLocalEvents(currentSceneMapping.actionName, "cancel");
+                };
             }
+        }
+    }
+
+    // Hilfsmethode, die deine lokale Prefab-Liste nach dem passenden Namen durchsucht
+    private void TriggerLocalEvents(string actionName, string eventType)
+    {
+        // Searches for an entry in your prefab list with the same name as the action from the scene
+        var localMatch = localMappings.Find(m => m.targetBridgeActionName == actionName);
+
+        if (localMatch != null)
+        {
+            if (eventType == "start")
+            {
+                localMatch.onLocalHoldStart?.Invoke();
+            }
+            else if (eventType == "cancel")
+            {
+                localMatch.onLocalHoldCancel?.Invoke();
+
+                // As we are mirroring the scene’s ‘first-time’ status, we use the state of the scene bridge
+                var sceneMatch = GlobalInputBridge.Instance.inputMappings.Find(m => m.actionName == actionName);
+                if (sceneMatch != null && sceneMatch.hasExecutedFirstTime)
+                {
+                    // We only trigger the event if it has been cancelled for the very first time in the scene
+                    // Unity’s system handles this. If you want to track it independently,
+                    // ‘hasExecutedFirstTime’ would need to be included in LocalPrefabMapping.
+                    localMatch.onLocalUpOnlyFirstTime?.Invoke();
+                }
+            }
+        }
+    }
+
+    public override void OnNetworkSpawn()
+    {
+        if (IsOwner && GlobalInputBridge.Instance != null)
+        {
+            GlobalInputBridge.Instance.EnableAllInputs();
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (IsOwner && GlobalInputBridge.Instance != null)
+        {
+            GlobalInputBridge.Instance.DisableAllInputs();
         }
     }
 }

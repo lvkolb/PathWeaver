@@ -17,6 +17,10 @@ public class NetworkControllerForUICanvas : MonoBehaviour
     [SerializeField] private TMP_InputField joinCodeInput;
     [SerializeField] private TMP_Text codeDisplayLabel;
 
+    [Header("Editor Debug Settings")]
+    [Tooltip("Enter the session code here to join directly via the Inspector Context Menu.")]
+    [SerializeField] private string editorJoinCode;
+
     private async void Start()
     {
         // Register button click events (uGUI syntax)
@@ -85,13 +89,24 @@ public class NetworkControllerForUICanvas : MonoBehaviour
         }
     }
 
+    [ContextMenu("Join Session as Client")]
     public async void Join()
     {
-        if (joinCodeInput == null) return;
-        string code = joinCodeInput.text.Trim();
+        string code = string.Empty;
+
+        // Check if we are using the UI InputField or the Editor Field
+        if (joinCodeInput != null && !string.IsNullOrEmpty(joinCodeInput.text))
+        {
+            code = joinCodeInput.text.Trim();
+        }
+        else if (!string.IsNullOrEmpty(editorJoinCode))
+        {
+            code = editorJoinCode.Trim();
+        }
 
         if (string.IsNullOrEmpty(code) || code.Length != 6)
         {
+            Debug.LogWarning("[Netcode] Please enter a valid 6-digit join code!");
             if (codeDisplayLabel != null) codeDisplayLabel.text = "Enter a 6-digit code!";
             return;
         }
@@ -103,7 +118,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
             // Join the session by its code
             var session = await MultiplayerService.Instance.JoinSessionByCodeAsync(code);
 
-            Debug.Log("[Netcode] Successfully joined via Relay!");
+            Debug.Log($"[Netcode] Successfully joined via Relay! Code: {code}");
             if (codeDisplayLabel != null) codeDisplayLabel.text = $"Joined Room: {code}";
 
             // Hide the UI since the session was successfully joined

@@ -10,7 +10,9 @@ using Unity.Services.Multiplayer;
 public class NetworkControllerForUICanvas : MonoBehaviour
 {
     [Header("UI Canvas References")]
-    [SerializeField] private GameObject uiPanel; // The main UI panel containing the connection controls
+    [SerializeField] private GameObject[] hiddenUI;
+    private bool isVisible = true;
+
     [SerializeField] private Button hostButton;
     [SerializeField] private Button clientButton;
     [SerializeField] private Button hideUIButton; // Button to manually hide the UI panel
@@ -26,7 +28,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
         // Register button click events (uGUI syntax)
         if (hostButton != null) hostButton.onClick.AddListener(Create);
         if (clientButton != null) clientButton.onClick.AddListener(Join);
-        if (hideUIButton != null) hideUIButton.onClick.AddListener(HideUI);
+        if (hideUIButton != null) hideUIButton.onClick.AddListener(toggleUIVisiblity);
 
         // Turn off buttons while initializing services
         SetUIInteractable(false);
@@ -60,7 +62,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
         // Unregister events to prevent memory leaks
         if (hostButton != null) hostButton.onClick.RemoveListener(Create);
         if (clientButton != null) clientButton.onClick.RemoveListener(Join);
-        if (hideUIButton != null) hideUIButton.onClick.RemoveListener(HideUI);
+        if (hideUIButton != null) hideUIButton.onClick.RemoveListener(toggleUIVisiblity);
     }
 
     [ContextMenu("Start Host")]
@@ -80,7 +82,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
             if (codeDisplayLabel != null) codeDisplayLabel.text = $"Join Code: {session.Code}";
 
             // Hide the UI since the session was successfully created
-            // HideUI();
+            // toggleUIVisiblity();
         }
         catch (Exception e)
         {
@@ -122,7 +124,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
             if (codeDisplayLabel != null) codeDisplayLabel.text = $"Joined Room: {code}";
 
             // Hide the UI since the session was successfully joined
-            // HideUI();
+            // toggleUIVisiblity();
         }
         catch (Exception e)
         {
@@ -139,11 +141,25 @@ public class NetworkControllerForUICanvas : MonoBehaviour
         if (joinCodeInput != null) joinCodeInput.interactable = state;
     }
 
-    private void HideUI()
+    private void toggleUIVisiblity()
     {
-        if (uiPanel != null)
+        if (isVisible)
         {
-            uiPanel.SetActive(false);
+            foreach (var element in hiddenUI)
+            {
+
+                element.SetActive(false);
+                isVisible = false;
+            }
+        }
+        else
+        {
+            foreach (var element in hiddenUI)
+            {
+
+                element.SetActive(true);
+                isVisible = true;
+            }
         }
     }
 }

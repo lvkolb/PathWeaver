@@ -9516,55 +9516,7 @@ MonoBehaviour:
       m_Flags: 0
     onXRHoldStart:
       m_PersistentCalls:
-        m_Calls:
-        - m_Target: {fileID: 503346758}
-          m_TargetAssemblyTypeName: RandomObjectSpawnerManager, Assembly-CSharp
-          m_MethodName: ClearAllObjects
-          m_Mode: 1
-          m_Arguments:
-            m_ObjectArgument: {fileID: 0}
-            m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-            m_IntArgument: 0
-            m_FloatArgument: 0
-            m_StringArgument: 
-            m_BoolArgument: 0
-          m_CallState: 2
-        - m_Target: {fileID: 41784135}
-          m_TargetAssemblyTypeName: AlongSplineObjectSpawner, Assembly-CSharp
-          m_MethodName: ClearAllSpawnedObjects
-          m_Mode: 1
-          m_Arguments:
-            m_ObjectArgument: {fileID: 0}
-            m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-            m_IntArgument: 0
-            m_FloatArgument: 0
-            m_StringArgument: 
-            m_BoolArgument: 0
-          m_CallState: 2
-        - m_Target: {fileID: 1855893456}
-          m_TargetAssemblyTypeName: VehicleManager, Assembly-CSharp
-          m_MethodName: ClearTraffic
-          m_Mode: 1
-          m_Arguments:
-            m_ObjectArgument: {fileID: 0}
-            m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-            m_IntArgument: 0
-            m_FloatArgument: 0
-            m_StringArgument: 
-            m_BoolArgument: 0
-          m_CallState: 2
-        - m_Target: {fileID: 308317492}
-          m_TargetAssemblyTypeName: TrafficNetwork, Assembly-CSharp
-          m_MethodName: ClearNetwork
-          m_Mode: 1
-          m_Arguments:
-            m_ObjectArgument: {fileID: 0}
-            m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-            m_IntArgument: 0
-            m_FloatArgument: 0
-            m_StringArgument: 
-            m_BoolArgument: 0
-          m_CallState: 2
+        m_Calls: []
     onXRHoldCancel:
       m_PersistentCalls:
         m_Calls: []

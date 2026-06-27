@@ -3,8 +3,9 @@ using UnityEngine.UI;
 using TMPro;
 using System.Reflection;
 using System.Collections.Generic;
+using Unity.Netcode;
 
-public class UISliderLinker : MonoBehaviour
+public class UISliderLinker : NetworkBehaviour
 {
     [System.Serializable]
     public class SliderLinkConfiguration
@@ -50,24 +51,20 @@ public class UISliderLinker : MonoBehaviour
                 continue;
             }
 
-            // Fallback guard to prevent division by zero or negative steps
             if (config.stepSize <= 0)
             {
                 config.stepSize = 2;
             }
 
-            // Try to find the component by its string name
+            // Cache reflection data locally on all instances
             config.targetComponent = config.targetGameObject.GetComponent(config.scriptName);
             if (config.targetComponent == null)
             {
-                Debug.LogError($"UISliderLinker [{i}]: Component '{config.scriptName}' not found on the target GameObject!", this);
+                Debug.LogError($"UISliderLinker [{i}]: Component '{config.scriptName}' not found on target!", this);
                 continue;
             }
 
-            // Look for a public field
             config.targetField = config.targetComponent.GetType().GetField(config.variableName, BindingFlags.Public | BindingFlags.Instance);
-
-            // If not found, look for a public property
             if (config.targetField == null)
             {
                 config.targetProperty = config.targetComponent.GetType().GetProperty(config.variableName, BindingFlags.Public | BindingFlags.Instance);
@@ -75,7 +72,7 @@ public class UISliderLinker : MonoBehaviour
 
             if (config.targetField == null && config.targetProperty == null)
             {
-                Debug.LogError($"UISliderLinker [{i}]: Variable or Property '{config.variableName}' not found in script '{config.scriptName}'!", this);
+                Debug.LogError($"UISliderLinker [{i}]: Variable/Property '{config.variableName}' not found!", this);
                 continue;
             }
 
@@ -84,38 +81,85 @@ public class UISliderLinker : MonoBehaviour
             config.valueSlider.maxValue = config.maxValue;
             config.valueSlider.wholeNumbers = true;
 
-            // Initialize values
-            UpdateValue(config, config.valueSlider.value);
+            // Explicit cast from float to int
+            ApplyLocalValueChanges(config, Mathf.RoundToInt(config.valueSlider.value));
 
-            // We utilize a local copy variable capturing the index context for the delegate registration
+            // Hook up the network event route
             int index = i;
-            config.valueSlider.onValueChanged.AddListener((val) => UpdateValue(sliderLinks[index], val));
+            config.valueSlider.onValueChanged.AddListener((val) => OnSliderMovedByUser(index, val));
         }
     }
 
-    private void UpdateValue(SliderLinkConfiguration config, float rawValue)
+    /// <summary>
+    /// Triggered when a user interacts with the UI Slider element.
+    /// </summary>
+    private void OnSliderMovedByUser(int configIndex, float rawValue)
     {
-        // Calculate the closest step (e.g., if stepSize is 20 and rawValue is 24, it snaps to 20)
+        SliderLinkConfiguration config = sliderLinks[configIndex];
         int roundedValue = Mathf.RoundToInt(rawValue);
         int steps = Mathf.RoundToInt((float)roundedValue / config.stepSize);
-        int finalValue = steps * config.stepSize;
+        int finalValue = Mathf.Clamp(steps * config.stepSize, config.minValue, config.maxValue);
 
-        // Ensure the value stays within min/max bounds
-        finalValue = Mathf.Clamp(finalValue, config.minValue, config.maxValue);
+        // Network check: Forward to network logic if multiplayer session is active
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
+        {
+            if (IsServer)
+            {
+                SyncSliderValueClientRpc(configIndex, finalValue);
+            }
+            else if (IsClient)
+            {
+                SubmitSliderValueServerRpc(configIndex, finalValue);
+            }
+        }
+        else
+        {
+            // Offline fallback
+            ApplyLocalValueChanges(config, finalValue);
+        }
+    }
 
-        // Update Text
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void SubmitSliderValueServerRpc(int configIndex, int finalValue)
+    {
+        SyncSliderValueClientRpc(configIndex, finalValue);
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    private void SyncSliderValueClientRpc(int configIndex, int finalValue)
+    {
+        if (configIndex < 0 || configIndex >= sliderLinks.Count) return;
+
+        SliderLinkConfiguration config = sliderLinks[configIndex];
+        ApplyLocalValueChanges(config, finalValue);
+    }
+
+    /// <summary>
+    /// Applies the synchronized value to the UI components and the reflected target variable.
+    /// </summary>
+    private void ApplyLocalValueChanges(SliderLinkConfiguration config, int finalValue)
+    {
+        // Update UI text display
         if (config.valueText != null)
         {
             config.valueText.text = finalValue.ToString();
         }
 
-        // Visually snap the slider handle to the stepped value
-        if (config.valueSlider.value != finalValue)
+        // Snap slider handle visually without triggering infinite event loops
+        if (Mathf.RoundToInt(config.valueSlider.value) != finalValue)
         {
+            int index = sliderLinks.IndexOf(config);
+
+            // Temporarily decouple to prevent loop
+            config.valueSlider.onValueChanged.RemoveAllListeners();
+
             config.valueSlider.value = finalValue;
+
+            // Re-hook listener after value assignment
+            config.valueSlider.onValueChanged.AddListener((val) => OnSliderMovedByUser(index, val));
         }
 
-        // Overwrite the value in your target script
+        // Apply synchronized value to the target script via reflection
         if (config.targetComponent != null)
         {
             if (config.targetField != null)
@@ -129,7 +173,7 @@ public class UISliderLinker : MonoBehaviour
         }
     }
 
-    private void OnDestroy()
+    public override void OnDestroy()
     {
         foreach (var config in sliderLinks)
         {
@@ -138,5 +182,8 @@ public class UISliderLinker : MonoBehaviour
                 config.valueSlider.onValueChanged.RemoveAllListeners();
             }
         }
+
+        // Always invoke the base class clean up when overriding NetworkBehaviour lifecycles
+        base.OnDestroy();
     }
 }

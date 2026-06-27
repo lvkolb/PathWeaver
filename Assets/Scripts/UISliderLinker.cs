@@ -2,121 +2,141 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Reflection;
+using System.Collections.Generic;
 
 public class UISliderLinker : MonoBehaviour
 {
-    [Header("UI References")]
-    [SerializeField] private Slider valueSlider;
-    [SerializeField] private TextMeshProUGUI valueText;
+    [System.Serializable]
+    public class SliderLinkConfiguration
+    {
+        [Header("UI References")]
+        public Slider valueSlider;
+        public TextMeshProUGUI valueText;
 
-    [Header("Target Script Settings")]
-    [Tooltip("Drag the GameObject that has your target script attached here.")]
-    [SerializeField] private GameObject targetGameObject;
+        [Header("Target Script Settings")]
+        [Tooltip("Drag the GameObject that has your target script attached here.")]
+        public GameObject targetGameObject;
 
-    [Tooltip("The exact name of the script/component (e.g., 'GameManager').")]
-    [SerializeField] private string scriptName;
+        [Tooltip("The exact name of the script/component (e.g., 'GameManager').")]
+        public string scriptName;
 
-    [Tooltip("The exact name of the variable inside that script (must be public).")]
-    [SerializeField] private string variableName;
+        [Tooltip("The exact name of the variable inside that script (must be public).")]
+        public string variableName;
 
-    [Header("Slider Settings")]
-    [SerializeField] private int minValue = 0;
-    [SerializeField] private int maxValue = 100;
-    [Tooltip("The step interval for the slider (e.g., 10 or 20). Must be an even number.")]
-    [SerializeField] private int stepSize = 10;
+        [Header("Slider Settings")]
+        public int minValue = 0;
+        public int maxValue = 100;
+        [Tooltip("The step interval for the slider (e.g., 10 or 20). Must be an even number.")]
+        public int stepSize = 10;
 
-    private Component targetComponent;
-    private FieldInfo targetField;
-    private PropertyInfo targetProperty;
+        // Runtime cached reflection data
+        [HideInInspector] public Component targetComponent;
+        [HideInInspector] public FieldInfo targetField;
+        [HideInInspector] public PropertyInfo targetProperty;
+    }
+
+    [Header("Slider Configurations")]
+    [SerializeField] private List<SliderLinkConfiguration> sliderLinks = new List<SliderLinkConfiguration>();
 
     private void Start()
     {
-        if (valueSlider == null || valueText == null || targetGameObject == null)
+        for (int i = 0; i < sliderLinks.Count; i++)
         {
-            Debug.LogError("UISliderLinker: Please assign all references in the inspector!", this);
-            return;
+            SliderLinkConfiguration config = sliderLinks[i];
+
+            if (config.valueSlider == null || config.valueText == null || config.targetGameObject == null)
+            {
+                Debug.LogError($"UISliderLinker: Please assign all references for element at index {i}!", this);
+                continue;
+            }
+
+            // Fallback guard to prevent division by zero or negative steps
+            if (config.stepSize <= 0)
+            {
+                config.stepSize = 2;
+            }
+
+            // Try to find the component by its string name
+            config.targetComponent = config.targetGameObject.GetComponent(config.scriptName);
+            if (config.targetComponent == null)
+            {
+                Debug.LogError($"UISliderLinker [{i}]: Component '{config.scriptName}' not found on the target GameObject!", this);
+                continue;
+            }
+
+            // Look for a public field
+            config.targetField = config.targetComponent.GetType().GetField(config.variableName, BindingFlags.Public | BindingFlags.Instance);
+
+            // If not found, look for a public property
+            if (config.targetField == null)
+            {
+                config.targetProperty = config.targetComponent.GetType().GetProperty(config.variableName, BindingFlags.Public | BindingFlags.Instance);
+            }
+
+            if (config.targetField == null && config.targetProperty == null)
+            {
+                Debug.LogError($"UISliderLinker [{i}]: Variable or Property '{config.variableName}' not found in script '{config.scriptName}'!", this);
+                continue;
+            }
+
+            // Setup slider limits
+            config.valueSlider.minValue = config.minValue;
+            config.valueSlider.maxValue = config.maxValue;
+            config.valueSlider.wholeNumbers = true;
+
+            // Initialize values
+            UpdateValue(config, config.valueSlider.value);
+
+            // We utilize a local copy variable capturing the index context for the delegate registration
+            int index = i;
+            config.valueSlider.onValueChanged.AddListener((val) => UpdateValue(sliderLinks[index], val));
         }
-
-        // Fallback guard to prevent division by zero or negative steps
-        if (stepSize <= 0)
-        {
-            stepSize = 2;
-        }
-
-        // Try to find the component by its string name
-        targetComponent = targetGameObject.GetComponent(scriptName);
-        if (targetComponent == null)
-        {
-            Debug.LogError($"UISliderLinker: Component '{scriptName}' not found on the target GameObject!", this);
-            return;
-        }
-
-        // Look for a public field
-        targetField = targetComponent.GetType().GetField(variableName, BindingFlags.Public | BindingFlags.Instance);
-
-        // If not found, look for a public property
-        if (targetField == null)
-        {
-            targetProperty = targetComponent.GetType().GetProperty(variableName, BindingFlags.Public | BindingFlags.Instance);
-        }
-
-        if (targetField == null && targetProperty == null)
-        {
-            Debug.LogError($"UISliderLinker: Variable or Property '{variableName}' not found in script '{scriptName}'!", this);
-            return;
-        }
-
-        // Setup slider limits
-        valueSlider.minValue = minValue;
-        valueSlider.maxValue = maxValue;
-        valueSlider.wholeNumbers = true;
-
-        // Initialize values
-        UpdateValue(valueSlider.value);
-        valueSlider.onValueChanged.AddListener(UpdateValue);
     }
 
-    private void UpdateValue(float rawValue)
+    private void UpdateValue(SliderLinkConfiguration config, float rawValue)
     {
         // Calculate the closest step (e.g., if stepSize is 20 and rawValue is 24, it snaps to 20)
         int roundedValue = Mathf.RoundToInt(rawValue);
-        int steps = Mathf.RoundToInt((float)roundedValue / stepSize);
-        int finalValue = steps * stepSize;
+        int steps = Mathf.RoundToInt((float)roundedValue / config.stepSize);
+        int finalValue = steps * config.stepSize;
 
         // Ensure the value stays within min/max bounds
-        finalValue = Mathf.Clamp(finalValue, minValue, maxValue);
+        finalValue = Mathf.Clamp(finalValue, config.minValue, config.maxValue);
 
         // Update Text
-        if (valueText != null)
+        if (config.valueText != null)
         {
-            valueText.text = finalValue.ToString();
+            config.valueText.text = finalValue.ToString();
         }
 
         // Visually snap the slider handle to the stepped value
-        if (valueSlider.value != finalValue)
+        if (config.valueSlider.value != finalValue)
         {
-            valueSlider.value = finalValue;
+            config.valueSlider.value = finalValue;
         }
 
         // Overwrite the value in your target script
-        if (targetComponent != null)
+        if (config.targetComponent != null)
         {
-            if (targetField != null)
+            if (config.targetField != null)
             {
-                targetField.SetValue(targetComponent, finalValue);
+                config.targetField.SetValue(config.targetComponent, finalValue);
             }
-            else if (targetProperty != null)
+            else if (config.targetProperty != null)
             {
-                targetProperty.SetValue(targetComponent, finalValue, null);
+                config.targetProperty.SetValue(config.targetComponent, finalValue, null);
             }
         }
     }
 
     private void OnDestroy()
     {
-        if (valueSlider != null)
+        foreach (var config in sliderLinks)
         {
-            valueSlider.onValueChanged.RemoveListener(UpdateValue);
+            if (config?.valueSlider != null)
+            {
+                config.valueSlider.onValueChanged.RemoveAllListeners();
+            }
         }
     }
 }

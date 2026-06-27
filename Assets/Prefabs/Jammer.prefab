@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 1575940888353857456}
   - component: {fileID: 4411367594889544979}
   - component: {fileID: 6943813215077730096}
-  m_Layer: 0
+  m_Layer: 13
   m_Name: Particle System
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -287,7 +287,7 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 2
+      scalar: 0.8
       minScalar: 1
       maxCurve:
         serializedVersion: 2
@@ -5043,6 +5043,10 @@ PrefabInstance:
     - target: {fileID: 919132149155446097, guid: 4599cc0da4371b948a19845b352cc88c, type: 3}
       propertyPath: m_Name
       value: hexagon
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 4599cc0da4371b948a19845b352cc88c, type: 3}
+      propertyPath: m_Layer
+      value: 13
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

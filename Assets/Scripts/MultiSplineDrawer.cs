@@ -208,20 +208,23 @@ public class MultiSplineDrawer : NetworkBehaviour
 
         foreach (var session in drawingSessions)
         {
+            // ENTFERNE DEN LOKALEN VORSCHAU-SPLINE VOR DEM SYNC
+            if (session.activeSpline != null && splineContainer != null)
+            {
+                splineContainer.RemoveSpline(session.activeSpline);
+            }
+
             if (session.currentPoints.Count > 0)
             {
-                // When we're in multiplayer mode, we send the points to everyone
                 if (Application.isPlaying)
                 {
                     Vector3[] pointsArray = session.currentPoints.ToArray();
                     if (IsServer)
                     {
-                        // As the host: Send directly to all clients
                         SyncSplineAndMeshClientRpc(pointsArray);
                     }
                     else if (IsClient)
                     {
-                        // As the client: Send the points to the server
                         SubmitSplinePointsServerRpc(pointsArray);
                     }
                 }
@@ -231,7 +234,6 @@ public class MultiSplineDrawer : NetworkBehaviour
             session.activeSpline = null;
         }
 
-        // Local fallback (or for editor mode)
         if (!Application.isPlaying)
         {
             FinalizeLocalRoadGeneration();

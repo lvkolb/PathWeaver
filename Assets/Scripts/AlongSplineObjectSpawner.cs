@@ -56,6 +56,53 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
     }
     private List<GizmoDebugData> gizmoVisuals = new List<GizmoDebugData>();
 
+    private void Start()
+    {
+        // Execute initial spawning for pre-existing splines if we are the server/host
+        if (Application.isPlaying)
+        {
+            if (IsServer)
+            {
+                SpawnObjectsForPreExistingSplines();
+            }
+        }
+        else
+        {
+            // Fallback for Editor mode configuration
+            if (splineContainer != null)
+            {
+                processedSplineCount = splineContainer.Splines.Count;
+            }
+        }
+    }
+
+    private void SpawnObjectsForPreExistingSplines()
+    {
+        if (splineContainer == null) return;
+
+        System.Random rng = new System.Random();
+
+        // 1. First clear any overlapping decoration assets that might block the road path
+        for (int i = 0; i < splineContainer.Splines.Count; i++)
+        {
+            DemolishObjectsInWayOfSpline(i);
+        }
+
+        // 2. Spawn objects for ALL splines currently existing in the container setup
+        for (int i = 0; i < splineContainer.Splines.Count; i++)
+        {
+            foreach (var group in spawnGroups)
+            {
+                SpawnGroupForSingleSpline(i, group, rng);
+            }
+        }
+
+        // 3. Lock down the counter so subsequent runtime drawing actions only evaluate brand new splines
+        processedSplineCount = splineContainer.Splines.Count;
+
+        Debug.Log($"[Spawner] Initialized pre-existing layout. Generated assets for {processedSplineCount} starter splines.");
+    }
+
     public void RequestSplineSpawn()
     {
         if (Application.isPlaying)

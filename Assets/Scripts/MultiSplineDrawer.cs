@@ -39,6 +39,10 @@ public class MultiSplineDrawer : NetworkBehaviour
     [Header("Road Width Generation")]
     public float splineWidth = 0.2f;
 
+    [Header("Knot Limits")]
+    [Tooltip("The maximum allowed total number of knots (existing + new).")]
+    public int maxKnots = 500;
+
     public bool IsDrawingActive => isHolding;
 
     [Header("Live Infrastructure Updates (Defaults) If not set -> Auto-Filled.")]
@@ -117,6 +121,7 @@ public class MultiSplineDrawer : NetworkBehaviour
 
         Debug.Log($"[MultiSplineDrawer] Found and registered {drawingSessions.Count} active drawing sources.");
     }
+
     // =================================================================================
     // CLEAR ALL SPLINES & ROAD DATA
     // =================================================================================
@@ -208,20 +213,23 @@ public class MultiSplineDrawer : NetworkBehaviour
 
         foreach (var session in drawingSessions)
         {
+            // REMOVE LOCAL PREVIEW SPLINE BEFORE SYNC
+            if (session.activeSpline != null && splineContainer != null)
+            {
+                splineContainer.RemoveSpline(session.activeSpline);
+            }
+
             if (session.currentPoints.Count > 0)
             {
-                // When we're in multiplayer mode, we send the points to everyone
                 if (Application.isPlaying)
                 {
                     Vector3[] pointsArray = session.currentPoints.ToArray();
                     if (IsServer)
                     {
-                        // As the host: Send directly to all clients
                         SyncSplineAndMeshClientRpc(pointsArray);
                     }
                     else if (IsClient)
                     {
-                        // As the client: Send the points to the server
                         SubmitSplinePointsServerRpc(pointsArray);
                     }
                 }
@@ -231,7 +239,6 @@ public class MultiSplineDrawer : NetworkBehaviour
             session.activeSpline = null;
         }
 
-        // Local fallback (or for editor mode)
         if (!Application.isPlaying)
         {
             FinalizeLocalRoadGeneration();
@@ -307,16 +314,117 @@ public class MultiSplineDrawer : NetworkBehaviour
             // 3. Distance check
             if (session.currentPoints.Count == 0 || Vector3.Distance(session.currentPoints[^1], worldPos) > minDistance)
             {
+                // Check if adding another knot would exceed the max limit
+                if (GetCurrentTotalKnotCount() >= maxKnots)
+                {
+                    Debug.LogWarning($"[MultiSplineDrawer] Knot limit reached! Maximum allowed: {maxKnots}. Ignoring new knots.");
+                    continue;
+                }
+
                 session.currentPoints.Add(worldPos);
                 UpdateSpline(session);
                 contentChanged = true;
             }
         }
 
+        // Output current total knots (including pre-existing ones) frame-by-frame while drawing
+        DebugLiveKnotCount();
+
         // Rebuild visual components once per frame if any spline changed
         if (contentChanged)
         {
             RebuildAllRoadComponents();
+        }
+    }
+
+    /// <summary>
+    /// Calculates the current total number of knots across all existing splines and active drawing sessions.
+    /// </summary>
+    /// <returns>The total number of combined knots.</returns>
+    private int GetCurrentTotalKnotCount()
+    {
+        int existingKnots = 0;
+        int activeSessionKnots = 0;
+
+        // Tally up pre-existing knots that are already part of the target SplineContainer
+        if (splineContainer != null && splineContainer.Splines != null)
+        {
+            foreach (var spline in splineContainer.Splines)
+            {
+                bool isSessionSpline = false;
+                foreach (var session in drawingSessions)
+                {
+                    if (session.activeSpline == spline)
+                    {
+                        isSessionSpline = true;
+                        break;
+                    }
+                }
+
+                if (!isSessionSpline)
+                {
+                    existingKnots += spline.Count;
+                }
+            }
+        }
+
+        // Tally up the knots currently being generated in active drawing sessions
+        foreach (var session in drawingSessions)
+        {
+            if (session.activeSpline != null)
+            {
+                activeSessionKnots += session.activeSpline.Count;
+            }
+        }
+
+        return existingKnots + activeSessionKnots;
+    }
+
+    /// <summary>
+    /// Aggregates and logs the total number of knots, including pre-existing splines and current temporary drawing sessions.
+    /// </summary>
+    private void DebugLiveKnotCount()
+    {
+        int existingKnots = 0;
+        int activeSessionKnots = 0;
+        int activeSessionsCount = 0;
+
+        if (splineContainer != null && splineContainer.Splines != null)
+        {
+            foreach (var spline in splineContainer.Splines)
+            {
+                bool isSessionSpline = false;
+                foreach (var session in drawingSessions)
+                {
+                    if (session.activeSpline == spline)
+                    {
+                        isSessionSpline = true;
+                        break;
+                    }
+                }
+
+                if (!isSessionSpline)
+                {
+                    existingKnots += spline.Count;
+                }
+            }
+        }
+
+        foreach (var session in drawingSessions)
+        {
+            if (session.activeSpline != null)
+            {
+                activeSessionKnots += session.activeSpline.Count;
+                activeSessionsCount++;
+            }
+        }
+
+        int totalKnots = existingKnots + activeSessionKnots;
+
+        if (activeSessionsCount > 0)
+        {
+            Debug.Log($"[MultiSplineDrawer] Drawing Active: {activeSessionsCount} session(s). " +
+                      $"[Pre-existing Knots: {existingKnots} | New Drawing Knots: {activeSessionKnots} | Total Combined Knots: {totalKnots}/{maxKnots}]");
         }
     }
 

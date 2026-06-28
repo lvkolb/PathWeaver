@@ -137,6 +137,11 @@ InitTestScene*.unity*
 /[Aa]ssets/Low Poly Stones/
 /[Aa]ssets/Low Poly Stones.meta
 
+# Ignore Planes & Choppers - PolyPack
+# https://assetstore.unity.com/packages/3d/vehicles/air/planes-choppers-polypack-194946
+/[Aa]ssets/Alstra Infinite/
+/[Aa]ssets/Alstra Infinite.meta
+
 # Textures for Buildings
 /[Aa]ssets/Textures/Buildings/
 /[Aa]ssets/Textures/Buildings.meta

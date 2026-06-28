@@ -365,7 +365,7 @@ public class MultiSplineDrawer : NetworkBehaviour
         // 1. Update UI TextMeshPro Mesh Component
         if (knotDisplayMesh != null)
         {
-            knotDisplayMesh.text = $"{currentLength:F1}m / {maxMeters:F1}m";
+            knotDisplayMesh.text = $"{currentLength:F1} / {maxMeters:F1}";
         }
 
         // 2. Output live log tracker to console

@@ -87,7 +87,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"[Netcode] Create Session failed: {e.Message}");
-            if (codeDisplayLabel != null) codeDisplayLabel.text = "Failed to create room.";
+            if (codeDisplayLabel != null) codeDisplayLabel.text = $"Failed to create room: : {e.Message}";
         }
     }
 
@@ -129,7 +129,7 @@ public class NetworkControllerForUICanvas : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"[Netcode] Join Session failed: {e.Message}");
-            if (codeDisplayLabel != null) codeDisplayLabel.text = "Failed to join.";
+            if (codeDisplayLabel != null) codeDisplayLabel.text = $"Failed to join: {e.Message}.";
         }
     }
 

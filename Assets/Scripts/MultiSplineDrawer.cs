@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.Splines;
 using Unity.Mathematics;
 using Unity.Netcode;
+using TMPro;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -39,9 +40,11 @@ public class MultiSplineDrawer : NetworkBehaviour
     [Header("Road Width Generation")]
     public float splineWidth = 0.2f;
 
-    [Header("Knot Limits")]
-    [Tooltip("The maximum allowed total number of knots (existing + new).")]
-    public int maxKnots = 500;
+    [Header("Road Length Limits & UI Display")]
+    [Tooltip("The maximum allowed road length in meters.")]
+    public float maxMeters = 100f; // Switched from maxKnots to maxMeters!
+    [Tooltip("Assign your TextMeshProUGUI component here to display the live meter tracking.")]
+    [SerializeField] private TextMeshProUGUI knotDisplayMesh;
 
     public bool IsDrawingActive => isHolding;
 
@@ -63,10 +66,6 @@ public class MultiSplineDrawer : NetworkBehaviour
     // DYNAMIC SOURCE MANAGEMENT
     // =================================================================================
 
-    /// <summary>
-    /// Finds all active GameObjects on the specified layer index and assigns them as drawing sources.
-    /// </summary>
-    /// <param name="layerIndex">The index of the Unity Layer.</param>
     public void RefreshDrawingSourcesByLayer(int layerIndex)
     {
         if (layerIndex < 0 || layerIndex > 31)
@@ -185,6 +184,9 @@ public class MultiSplineDrawer : NetworkBehaviour
         // 4. Notify structural tracking networks to flatten calculations
         DefaultNetworkAndVehicleUpdates();
 
+        // Instantly reset UI text to 0.0m
+        UpdateLiveKnotUIDisplay();
+
         Debug.Log("<color=red>[Spline Drawer]</color> All generated road splines and width maps were successfully cleared in Unity 6!");
     }
 
@@ -192,13 +194,11 @@ public class MultiSplineDrawer : NetworkBehaviour
     {
         // Automatically grab the latest active sources from the dropdown layer before starting
         RefreshDrawingSourcesByLayer(targetLayer.layerIndex);
-
         isHolding = true;
 
         // Start a new spline for each active session
         foreach (var session in drawingSessions)
         {
-            // Safeguard against objects that were destroyed or disabled after gathering
             if (session.drawingSource == null || !session.drawingSource.gameObject.activeInHierarchy)
                 continue;
 
@@ -213,7 +213,6 @@ public class MultiSplineDrawer : NetworkBehaviour
 
         foreach (var session in drawingSessions)
         {
-            // REMOVE LOCAL PREVIEW SPLINE BEFORE SYNC
             if (session.activeSpline != null && splineContainer != null)
             {
                 splineContainer.RemoveSpline(session.activeSpline);
@@ -255,34 +254,30 @@ public class MultiSplineDrawer : NetworkBehaviour
     [Rpc(SendTo.ClientsAndHost)]
     private void SyncSplineAndMeshClientRpc(Vector3[] points)
     {
-        // IMPORTANT: If the host is to spawn the houses, ONLY the server must do so!
-        // As this RPC is received by all devices, each one executes it for its own mesh.
-
-        // 1. Create a new spline on this device
         Spline networkSpline = new Spline();
         if (splineContainer == null) splineContainer = targetSpline.GetComponent<SplineContainer>();
         splineContainer.AddSpline(networkSpline);
         PatchAllWidthComponents(splineContainer.Splines.Count - 1);
 
-        // 2. Enter points into the spline
         foreach (Vector3 worldPos in points)
         {
             Vector3 localPos = splineContainer.transform.InverseTransformPoint(worldPos);
             networkSpline.Add(new BezierKnot(localPos));
         }
 
-        // 3. Generate a road mesh on this device
         ConnectAllInternalSplines();
         RebuildAllRoadComponents();
         DefaultNetworkAndVehicleUpdates();
 
-        // 4. ONLY the server now triggers the house spawner, as it now has exactly the same splines!
+        // Update UI immediately for remote clients upon receiving network splines
+        UpdateLiveKnotUIDisplay();
+
         if (IsServer)
         {
             AlongSplineObjectSpawner spawner = FindAnyObjectByType<AlongSplineObjectSpawner>();
             if (spawner != null)
             {
-                spawner.CheckForNewSplinesAndSpawn(); // Let’s run it straight away, as we’re already on the server!
+                spawner.CheckForNewSplinesAndSpawn();
             }
         }
     }
@@ -314,10 +309,12 @@ public class MultiSplineDrawer : NetworkBehaviour
             // 3. Distance check
             if (session.currentPoints.Count == 0 || Vector3.Distance(session.currentPoints[^1], worldPos) > minDistance)
             {
-                // Check if adding another knot would exceed the max limit
-                if (GetCurrentTotalKnotCount() >= maxKnots)
+                // SMART METERS CHECK:
+                // Check if adding the next segment length would breach the direct maxMeters limit
+                float currentTotalMeters = GetAllSplinesPhysicalLength();
+                if (currentTotalMeters + minDistance > maxMeters)
                 {
-                    Debug.LogWarning($"[MultiSplineDrawer] Knot limit reached! Maximum allowed: {maxKnots}. Ignoring new knots.");
+                    Debug.LogWarning($"[MultiSplineDrawer] Road length limit reached! Maximum allowed: {maxMeters}m. Blocking new segments.");
                     continue;
                 }
 
@@ -327,10 +324,9 @@ public class MultiSplineDrawer : NetworkBehaviour
             }
         }
 
-        // Output current total knots (including pre-existing ones) frame-by-frame while drawing
-        DebugLiveKnotCount();
+        // Live refresh UI and logs frame-by-frame while drawing
+        UpdateLiveKnotUIDisplay();
 
-        // Rebuild visual components once per frame if any spline changed
         if (contentChanged)
         {
             RebuildAllRoadComponents();
@@ -338,93 +334,52 @@ public class MultiSplineDrawer : NetworkBehaviour
     }
 
     /// <summary>
-    /// Calculates the current total number of knots across all existing splines and active drawing sessions.
+    /// Calculates the exact physical curve length of all splines in meters.
     /// </summary>
-    /// <returns>The total number of combined knots.</returns>
-    private int GetCurrentTotalKnotCount()
+    private float GetAllSplinesPhysicalLength()
     {
-        int existingKnots = 0;
-        int activeSessionKnots = 0;
-
-        // Tally up pre-existing knots that are already part of the target SplineContainer
+        float totalLength = 0f;
         if (splineContainer != null && splineContainer.Splines != null)
         {
             foreach (var spline in splineContainer.Splines)
             {
-                bool isSessionSpline = false;
-                foreach (var session in drawingSessions)
-                {
-                    if (session.activeSpline == spline)
-                    {
-                        isSessionSpline = true;
-                        break;
-                    }
-                }
-
-                if (!isSessionSpline)
-                {
-                    existingKnots += spline.Count;
-                }
+                totalLength += spline.GetLength();
             }
         }
-
-        // Tally up the knots currently being generated in active drawing sessions
-        foreach (var session in drawingSessions)
-        {
-            if (session.activeSpline != null)
-            {
-                activeSessionKnots += session.activeSpline.Count;
-            }
-        }
-
-        return existingKnots + activeSessionKnots;
+        return totalLength;
     }
 
     /// <summary>
-    /// Aggregates and logs the total number of knots, including pre-existing splines and current temporary drawing sessions.
+    /// Live feedback updates for both the UI text overlay and console debugging logs.
     /// </summary>
-    private void DebugLiveKnotCount()
+    private void UpdateLiveKnotUIDisplay()
     {
-        int existingKnots = 0;
-        int activeSessionKnots = 0;
-        int activeSessionsCount = 0;
+        float currentLength = GetAllSplinesPhysicalLength();
 
-        if (splineContainer != null && splineContainer.Splines != null)
+        // Clamp just in case fast frames overflow minutely
+        if (currentLength > maxMeters)
         {
-            foreach (var spline in splineContainer.Splines)
-            {
-                bool isSessionSpline = false;
-                foreach (var session in drawingSessions)
-                {
-                    if (session.activeSpline == spline)
-                    {
-                        isSessionSpline = true;
-                        break;
-                    }
-                }
-
-                if (!isSessionSpline)
-                {
-                    existingKnots += spline.Count;
-                }
-            }
+            currentLength = maxMeters;
         }
 
+        // 1. Update UI TextMeshPro Mesh Component
+        if (knotDisplayMesh != null)
+        {
+            knotDisplayMesh.text = $"{currentLength:F1}m / {maxMeters:F1}m";
+        }
+
+        // 2. Output live log tracker to console
+        int activeSessionsCount = 0;
         foreach (var session in drawingSessions)
         {
-            if (session.activeSpline != null)
-            {
-                activeSessionKnots += session.activeSpline.Count;
+            if (session.activeSpline != null && session.activeSpline.Count > 0)
                 activeSessionsCount++;
-            }
         }
-
-        int totalKnots = existingKnots + activeSessionKnots;
 
         if (activeSessionsCount > 0)
         {
-            Debug.Log($"[MultiSplineDrawer] Drawing Active: {activeSessionsCount} session(s). " +
-                      $"[Pre-existing Knots: {existingKnots} | New Drawing Knots: {activeSessionKnots} | Total Combined Knots: {totalKnots}/{maxKnots}]");
+            Debug.Log($"[MultiSplineDrawer] Drawing Active: Tracking {activeSessionsCount} active session(s). " +
+                      $"Current Total Road Length: {currentLength:F1}m / {maxMeters:F1}m");
         }
     }
 

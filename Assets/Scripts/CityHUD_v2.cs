@@ -35,8 +35,9 @@ public class CityHUD_v2 : MonoBehaviour
     // ── Formel-Konstanten ─────────────────────────────────────────────────────
     // Score = (vehiclesReached × 0.5) + ((100 − trafficJams) × 0.3) + (mapCoverage × 0.2)
     // Weavers win: > 65 | Draw: 35–65 | Jammers win: < 35
-    const float W_VEHICLES = 0.5f;
-    const float W_TRAFFIC = 0.3f;
+    // nchanged it to 04 04 02 for more competition potential
+    const float W_VEHICLES = 0.4f;
+    const float W_TRAFFIC = 0.4f;
     const float W_COVERAGE = 0.2f;
     const float THRESHOLD_WIN = 65f;
     const float THRESHOLD_LOSE = 35f;
@@ -145,26 +146,34 @@ public class CityHUD_v2 : MonoBehaviour
         if (_balCursor != null)
             _balCursor.anchoredPosition = new Vector2(cursorX, 0f);
 
+        // Jammers (Red) fill outward from Center to Left
         if (_balFillRed != null)
         {
             RectTransform rt = _balFillRed.GetComponent<RectTransform>();
-            float redW = Mathf.Max(2f, 170f + cursorX);
-            rt.pivot = new Vector2(0f, 0.5f);
-            rt.anchoredPosition = new Vector2(-170f, 0f);
-            rt.sizeDelta = new Vector2(redW, rt.sizeDelta.y);
-            _balFillRed.color = new Color(C_NEG.r, C_NEG.g, C_NEG.b,
-                                            0.25f + Mathf.Max(0f, -bal) * 0.55f);
+            rt.pivot = new Vector2(1f, 0.5f); // Anchor pivot to the right edge of this image
+            rt.anchoredPosition = new Vector2(0f, 0f); // Lock position to the dead center
+
+            // Only give it width if Jammers are leading (bal < 0)
+            float redW = bal < 0f ? Mathf.Abs(bal) * 170f : 0f;
+            rt.sizeDelta = new Vector2(Mathf.Max(2f, redW), rt.sizeDelta.y);
+
+            // Solidify the color so it's clearly visible
+            _balFillRed.color = new Color(C_NEG.r, C_NEG.g, C_NEG.b, 0.8f);
         }
 
+        // Weavers (Green) fill outward from Center to Right
         if (_balFillGreen != null)
         {
             RectTransform rt = _balFillGreen.GetComponent<RectTransform>();
-            float greenW = Mathf.Max(2f, 170f - cursorX);
-            rt.pivot = new Vector2(1f, 0.5f);
-            rt.anchoredPosition = new Vector2(170f, 0f);
-            rt.sizeDelta = new Vector2(greenW, rt.sizeDelta.y);
-            _balFillGreen.color = new Color(C_POS.r, C_POS.g, C_POS.b,
-                                            0.25f + Mathf.Max(0f, bal) * 0.55f);
+            rt.pivot = new Vector2(0f, 0.5f); // Anchor pivot to the left edge of this image
+            rt.anchoredPosition = new Vector2(0f, 0f); // Lock position to the dead center
+
+            // Only give it width if Weavers are leading (bal > 0)
+            float greenW = bal > 0f ? bal * 170f : 0f;
+            rt.sizeDelta = new Vector2(Mathf.Max(2f, greenW), rt.sizeDelta.y);
+
+            // Solidify the color so it's clearly visible
+            _balFillGreen.color = new Color(C_POS.r, C_POS.g, C_POS.b, 0.8f);
         }
 
         // Team labels

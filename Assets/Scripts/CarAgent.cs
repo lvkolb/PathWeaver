@@ -179,7 +179,21 @@ public class CarAgent : MonoBehaviour
     private void CalculateDynamicSpeed()
     {
         currentSpeed = baseSpeed;
-
+        bool isYieldingAtIntersection = false;
+        if (currentTarget != null && currentTarget.nodeType == TrafficNode.NodeType.Intersection)
+        {
+            // We are at the PreIntersection, trying to enter the Intersection. Is it free?
+            if (currentTarget.occupyingVehicle == null)
+            {
+                // It is free! Claim it so nobody else drives in.
+                currentTarget.occupyingVehicle = this;
+            }
+            else if (currentTarget.occupyingVehicle != this)
+            {
+                // Someone else is in the intersection. We must yield and wait.
+                isYieldingAtIntersection = true;
+            }
+        }
         // Elevate the ray so it shoots out of the windshield/grill, not the floor
         Vector3 rayOrigin = transform.position + (Vector3.up * 0.05f);
 
@@ -205,7 +219,15 @@ public class CarAgent : MonoBehaviour
             }
         }
 
-        if (carDetectedInFront)
+        if (isYieldingAtIntersection)
+        {
+            // Hard stop. Do not play the crash audio, just idle at the intersection line.
+            currentSpeed = 0f;
+            timeStuck = 0f;
+            soundRepeatTimer = 0f;
+            HandleStopAudio(false);
+        }
+        else if (carDetectedInFront)
         {
             // Map the distance to a speed multiplier (0 when touching min stopping distance, 1 when at edge of detection)
             float speedMultiplier = Mathf.InverseLerp(minStoppingDistance, detectionDistance, closestValidDistance);
@@ -307,7 +329,10 @@ public class CarAgent : MonoBehaviour
             currentTarget = net.FindNearbyNode(currentTarget.transform.position);
         else
             currentTarget = headingToWork ? homeNode : workNode;
-
+        if (currentTarget != null && currentTarget.occupyingVehicle == this)
+        {
+            currentTarget.occupyingVehicle = null;
+        }
         // Clear the now-invalid path and recalculate fresh
         currentPath.Clear();
         useSpline = false;
@@ -323,6 +348,14 @@ public class CarAgent : MonoBehaviour
         if (currentPath.Count > 0)
         {
             TrafficNode from = currentTarget != null ? currentTarget : (headingToWork ? homeNode : workNode);
+
+            if (from != null && from.nodeType == TrafficNode.NodeType.Intersection)
+            {
+                if (from.occupyingVehicle == this)
+                {
+                    from.occupyingVehicle = null;
+                }
+            }
             currentTarget = currentPath[0];
             if (currentTarget != null) currentTarget.wasVisited = true;
             currentPath.RemoveAt(0);

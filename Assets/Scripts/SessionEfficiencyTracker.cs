@@ -18,6 +18,7 @@ public class SessionEfficiencyTracker : MonoBehaviour
 
     private int _tripsInCurrentWindow = 0;
     private float _windowTimer = 0f;
+    private float _coverageTimer = 0f;
     private float _rollingThroughputScore = 100f;
     // Add these to SessionEfficiencyTracker.cs to feed the UI
     public float GetNormalizedThroughput() => _rollingThroughputScore / 100f;
@@ -67,35 +68,94 @@ public class SessionEfficiencyTracker : MonoBehaviour
     private void Update()
     {
         _windowTimer += Time.deltaTime;
+        _coverageTimer += Time.deltaTime;
 
         // Calculate rolling throughput window once every 10 seconds to avoid twitchy data spikes
         if (_windowTimer >= 10f)
         {
             CalculateRollingThroughput();
         }
-
+        if (_coverageTimer >= 45f)
+        {
+            ResetNodesOnly();
+            _coverageTimer = 0f;
+        }
         EvaluateMasterScore();
+    }
+    private void ResetNodesOnly()
+    {
+        // Safety check to prevent null reference errors
+        if (trafficNetwork == null || trafficNetwork.allNodes == null) return;
+
+        foreach (var node in trafficNetwork.allNodes)
+        {
+            if (node != null)
+            {
+                node.wasVisited = false;
+            }
+        }
+    }
+    private float GetDynamicPathLength()
+    {
+        // Fallback in case the network isn't initialized yet
+        if (trafficNetwork == null || trafficNetwork.allNodes.Count == 0) return 20f;
+
+        Vector3 minBounds = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        Vector3 maxBounds = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+
+        foreach (var node in trafficNetwork.allNodes)
+        {
+            // Assuming your node object has a Transform component
+            if (node != null)
+            {
+                Vector3 pos = node.transform.position;
+                minBounds = Vector3.Min(minBounds, pos);
+                maxBounds = Vector3.Max(maxBounds, pos);
+            }
+        }
+
+        // Calculate the diagonal distance of the entire city grid
+        float cityDiagonal = Vector3.Distance(minBounds, maxBounds);
+
+        // Rule of thumb: An average trip inside a closed network is about 45% of the max diagonal.
+        // We enforce a minimum length of 20f to prevent math errors on tiny networks.
+        return Mathf.Max(20f, cityDiagonal * 0.45f);
     }
 
     private void CalculateRollingThroughput()
     {
         List<CarAgent> activeAgents = GetActiveAgents();
-        if (activeAgents.Count == 0) return;
+
+        // Safety check: Reset to 0 if there are no cars, rather than just returning
+        if (activeAgents.Count == 0)
+        {
+            _rollingThroughputScore = 0f;
+            return;
+        }
 
         float totalFleetSpeed = 0f;
         foreach (var agent in activeAgents) totalFleetSpeed += agent.baseSpeed;
         float avgSpeed = totalFleetSpeed / activeAgents.Count;
 
-        // Estimate typical path length dynamically based on grid scale nodes
-        float estimatedAvgPathLength = 20f;
+        // 1. DYNAMIC PATH LENGTH
+        // Replaces the hardcoded 20f with our responsive city-size calculation
+        float estimatedAvgPathLength = GetDynamicPathLength();
+
         float idealTripDuration = estimatedAvgPathLength / (avgSpeed > 0 ? avgSpeed : 1f);
         float idealTripsPerMinutePerCar = 60f / idealTripDuration;
         float expectedFleetTripsPerMin = activeAgents.Count * idealTripsPerMinutePerCar;
 
+        // 2. ACTUAL PERFORMANCE
         // Extrapolate our 10-second sample window to 60 seconds
         float actualTripsPerMinute = (_tripsInCurrentWindow / _windowTimer) * 60f;
+        float rawThroughput = (actualTripsPerMinute / expectedFleetTripsPerMin) * 100f;
 
-        _rollingThroughputScore = Mathf.Min((actualTripsPerMinute / expectedFleetTripsPerMin) * 100f, 100f);
+        // 3. THE CONGESTION CAP ("Jammer Tax")
+        // Ensure the throughput score can NEVER exceed the available unblocked roads
+        float maxPossibleThroughput = 100f - _lastCongestionPct;
+
+        // Apply the score, clamped to the physical reality of the traffic jam
+        _rollingThroughputScore = Mathf.Clamp(rawThroughput, 0f, maxPossibleThroughput);
 
         // Reset tracking window
         _tripsInCurrentWindow = 0;

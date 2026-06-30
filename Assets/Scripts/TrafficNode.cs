@@ -26,6 +26,7 @@ public class TrafficNode : MonoBehaviour
     [SerializeField] private float arrowLength = 0.015f;
     // Add this property inside TrafficNode.cs
     [HideInInspector] public bool wasVisited = false;
+    [HideInInspector] public CarAgent occupyingVehicle = null;
     /// <summary>
     /// Establishes a synchronized one-way connection to a target node.
     /// </summary>

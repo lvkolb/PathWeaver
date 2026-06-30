@@ -1,9 +1,11 @@
 using UnityEngine;
 using System.Collections.Generic;
-using System;
 
 public class BigMapSyncManager : MonoBehaviour
 {
+    // Singleton Instance for instant O(1) access from other scripts
+    public static BigMapSyncManager Instance { get; private set; }
+
     [Header("Map Planes (Transforms)")]
     [Tooltip("The mini plane with its own scale (e.g., 2, 1, 2)")]
     [SerializeField] private Transform miniMapPlane;
@@ -14,6 +16,11 @@ public class BigMapSyncManager : MonoBehaviour
     [Tooltip("Adjust the slider to change the scale of the holograms on the big map.")]
     [Range(0.05f, 20f)]
     [SerializeField] private float objectVisualScale = 5f;
+
+    [Header("Trail Settings")]
+    [Tooltip("Adjust the width multiplier specifically for the TrailRenderers on the big map.")]
+    [Range(0.05f, 20f)]
+    [SerializeField] private float trailWidthMultiplier = 5f;
 
     [Header("Objects to Duplicate & Sync")]
     [SerializeField] private List<GameObject> objectsToSync = new List<GameObject>();
@@ -30,129 +37,82 @@ public class BigMapSyncManager : MonoBehaviour
 
     private List<SyncPair> synchronizedPairs = new List<SyncPair>();
     private HashSet<Transform> knownTransforms = new HashSet<Transform>();
+    private HashSet<string> whitelistLookup;
     private float calculatedPositionFactor = 1f;
-    private HashSet<string> whitelistLookup = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    private void Awake()
+    {
+        // Setup Singleton
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+
+        whitelistLookup = new HashSet<string>(componentsToKeep);
+        CalculateScaleFactor();
+    }
 
     private void Start()
     {
-        // Populate the lookup set for faster O(1) checks
-        if (componentsToKeep != null)
-        {
-            foreach (string compName in componentsToKeep)
-            {
-                if (!string.IsNullOrWhiteSpace(compName))
-                {
-                    whitelistLookup.Add(compName.Trim());
-                }
-            }
-        }
-
-        if (transform.localScale != Vector3.one)
-        {
-            Debug.LogWarning($"The Manager GameObject '{name}' should have a scale of (1,1,1) to prevent hologram distortion! Resetting it now.");
-            transform.localScale = Vector3.one;
-        }
-
-        if (miniMapPlane == null || bigMapPlane == null)
-        {
-            Debug.LogError("Please assign both Mini Map Plane and Big Map Plane in the inspector!");
-            return;
-        }
-
-        if (miniMapPlane.localScale.x > 0)
-        {
-            calculatedPositionFactor = bigMapPlane.localScale.x / miniMapPlane.localScale.x;
-        }
-
+        // Initial scan at startup for pre-existing local objects
         ScanAndSetupObjects();
     }
 
-    private void LateUpdate()
+    /// <summary>
+    /// Call this method whenever a new road or object is spawned to refresh the big map.
+    /// Usage: BigMapSyncManager.Instance.RegisterNewObjects();
+    /// </summary>
+    public void RegisterNewObjects()
+    {
+        ScanAndSetupObjects();
+    }
+
+    private void Update()
+    {
+        // Track and move synchronized targets (e.g., driving cars) every frame
+        UpdatePositions();
+    }
+
+    private void CalculateScaleFactor()
     {
         if (miniMapPlane == null || bigMapPlane == null) return;
-
-        ScanAndSetupObjects();
-
-        int count = synchronizedPairs.Count;
-        for (int i = count - 1; i >= 0; i--)
-        {
-            SyncPair pair = synchronizedPairs[i];
-
-            if (pair.MiniTransform == null)
-            {
-                if (pair.BigTransform != null) Destroy(pair.BigTransform.gameObject);
-                synchronizedPairs.RemoveAt(i);
-                continue;
-            }
-
-            // 1. POSITION MAPPING
-            Vector3 localPos = miniMapPlane.InverseTransformPoint(pair.MiniTransform.position);
-            Vector3 worldPosOnBigPlane = bigMapPlane.TransformPoint(localPos);
-            pair.BigTransform.position = worldPosOnBigPlane;
-
-            // 2. ROTATION MAPPING
-            Quaternion localRot = Quaternion.Inverse(miniMapPlane.rotation) * pair.MiniTransform.rotation;
-            pair.BigTransform.rotation = bigMapPlane.rotation * localRot;
-
-            // 3. LIVE OBJECT SCALE
-            pair.BigTransform.localScale = pair.MiniTransform.localScale * objectVisualScale;
-        }
+        calculatedPositionFactor = bigMapPlane.localScale.x / miniMapPlane.localScale.x;
     }
 
     private void ScanAndSetupObjects()
     {
-        foreach (GameObject sourceGo in objectsToSync)
+        if (miniMapPlane == null || bigMapPlane == null) return;
+
+        foreach (GameObject sourceGroup in objectsToSync)
         {
-            if (sourceGo == null) continue;
+            if (sourceGroup == null) continue;
 
-            foreach (Transform miniTransform in sourceGo.transform)
+            foreach (Transform child in sourceGroup.transform)
             {
-                if (miniTransform == miniMapPlane || knownTransforms.Contains(miniTransform))
-                    continue;
+                if (knownTransforms.Contains(child)) continue;
 
-                DuplicateAndRegister(miniTransform);
-                knownTransforms.Add(miniTransform);
+                knownTransforms.Add(child);
+                CreateBigMapClone(child);
             }
         }
     }
 
-    private void DuplicateAndRegister(Transform miniTransform)
+    private void CreateBigMapClone(Transform miniTransform)
     {
-        GameObject bigObjectGo = Instantiate(miniTransform.gameObject, transform);
+        GameObject bigObjectGo = Instantiate(miniTransform.gameObject, bigMapPlane);
+        bigObjectGo.name = "Sync_" + miniTransform.name;
 
-        // Auto-detect if this object is a Spline system
-        bool isSpline = bigObjectGo.GetComponentInChildren<UnityEngine.Splines.SplineContainer>() != null;
+        bool isSpline = miniTransform.GetComponentInParent<UnityEngine.Splines.SplineContainer>() != null;
 
         if (!isSpline)
         {
-            // Physics / Rigidbodies
-            Rigidbody[] rbs = bigObjectGo.GetComponentsInChildren<Rigidbody>();
-            foreach (Rigidbody rb in rbs)
-            {
-                if (!ShouldKeepComponent(rb)) Destroy(rb);
-            }
-
-            // Colliders
-            Collider[] colliders = bigObjectGo.GetComponentsInChildren<Collider>();
-            foreach (Collider col in colliders)
-            {
-                if (!ShouldKeepComponent(col)) Destroy(col);
-            }
-
-            // All MonoBehaviours (Custom scripts, TrailRenderer, etc.)
-            Component[] allComponents = bigObjectGo.GetComponentsInChildren<Component>();
+            Component[] allComponents = bigObjectGo.GetComponentsInChildren<Component>(true);
             foreach (Component comp in allComponents)
             {
-                if (comp == null || comp is Transform || comp is BigMapSyncManager)
-                    continue;
-
-                // Check if it's a script or a behavior component we want to strip
-                if (comp is MonoBehaviour || comp is Renderer || comp is Collider || comp is Rigidbody)
+                if (comp != null && !(comp is Transform) && !(comp is MeshFilter) && !(comp is MeshRenderer))
                 {
-                    // Ensure we don't accidentally wipe fundamental renderers unless desired
-                    if (comp is MeshFilter || comp is MeshRenderer)
-                        continue;
-
                     if (!ShouldKeepComponent(comp))
                     {
                         Destroy(comp);
@@ -162,7 +122,6 @@ public class BigMapSyncManager : MonoBehaviour
         }
         else
         {
-            // Splines: Keep scripts active so they can render, but disable physics/colliders safely for VR
             Collider[] childColliders = bigObjectGo.GetComponentsInChildren<Collider>();
             foreach (Collider col in childColliders)
             {
@@ -178,6 +137,13 @@ public class BigMapSyncManager : MonoBehaviour
 
         bigObjectGo.transform.localScale = miniTransform.localScale * objectVisualScale;
 
+        // Clear existing trail history right after instantiation to prevent a visual line snap artifact
+        TrailRenderer trail = bigObjectGo.GetComponentInChildren<TrailRenderer>();
+        if (trail != null)
+        {
+            trail.Clear();
+        }
+
         SyncPair pair = new SyncPair
         {
             MiniTransform = miniTransform,
@@ -187,14 +153,39 @@ public class BigMapSyncManager : MonoBehaviour
         synchronizedPairs.Add(pair);
     }
 
+    private void UpdatePositions()
+    {
+        for (int i = synchronizedPairs.Count - 1; i >= 0; i--)
+        {
+            SyncPair pair = synchronizedPairs[i];
+
+            if (pair.MiniTransform == null || pair.BigTransform == null)
+            {
+                if (pair.BigTransform != null) Destroy(pair.BigTransform.gameObject);
+                synchronizedPairs.RemoveAt(i);
+                continue;
+            }
+
+            Vector3 localOffset = pair.MiniTransform.position - miniMapPlane.position;
+            Vector3 scaledOffset = localOffset * calculatedPositionFactor;
+
+            pair.BigTransform.position = bigMapPlane.position + scaledOffset;
+            pair.BigTransform.rotation = pair.MiniTransform.rotation;
+
+            // Live update the Trail width if the clone has a TrailRenderer component
+            TrailRenderer trail = pair.BigTransform.GetComponentInChildren<TrailRenderer>();
+            if (trail != null)
+            {
+                trail.widthMultiplier = trailWidthMultiplier;
+            }
+        }
+    }
+
     private bool ShouldKeepComponent(Component comp)
     {
         if (comp == null) return false;
-
         string typeName = comp.GetType().Name;
         string fullTypeName = comp.GetType().FullName;
-
-        // Check against short name (e.g. "TrailRenderer") or full namespace name
         return whitelistLookup.Contains(typeName) || (!string.IsNullOrEmpty(fullTypeName) && whitelistLookup.Contains(fullTypeName));
     }
 }

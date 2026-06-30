@@ -401,6 +401,7 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                 }
             }
         }
+        BigMapSyncManager.Instance?.RegisterNewObjects();
 
         // Final environment collision check (avoidance layers)
         if (!Physics.CheckBox(spawnPosition, checkBoxExtents, spawnRotation, group.avoidanceLayers))

@@ -192,6 +192,8 @@ public class VehicleManager : NetworkBehaviour
                             vehicle.transform.SetParent(pathParent);
                         }
                     }
+
+                    BigMapSyncManager.Instance?.RegisterNewObjects();
                 }
                 else
                 {

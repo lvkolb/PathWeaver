@@ -3,13 +3,13 @@ using UnityEngine.Splines;
 using System.Collections.Generic;
 using Unity.Mathematics;
 using Unity.Netcode;
+
 public class RandomObjectSpawnerManager : NetworkBehaviour
 {
     // A custom class to pair a Prefab with its custom spawn weight configuration
     [System.Serializable]
     public class SpawnableItem
     {
-        // Unity automatically uses the first string field it finds as the element title in the list.
         [HideInInspector] public string prefabName;
 
         public GameObject prefab;
@@ -38,13 +38,14 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
 
     [Header("Avoid collision")]
     public LayerMask avoidanceLayers;
-    [Tooltip("The safety buffer space around buildings to prevent overlapping.")]
-    public float spacingFromRoad = 0.1f;
+    [Tooltip("The safety buffer space around buildings to prevent overlapping with the road.")]
+    public float spacingFromRoad = 0.65f;
+    [Tooltip("The safety buffer space between individual spawned objects. Keep low for dense placement.")]
+    public float spacingBetweenObjects = 0.1f;
 
     [Header("Area Reference")]
     public Transform areaObject;
 
-    // Track network objects using NetworkObject references to support network destruction
     private List<NetworkObject> spawnedNetworkObjects = new List<NetworkObject>();
 
     private void OnValidate()
@@ -68,9 +69,6 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
     // MULTIPLAYER SERVER/CLIENT ROUTINE (Unity 6 Compatible)
     // =================================================================================
 
-    /// <summary>
-    /// Call this method from your VR UI or input script to trigger the spawn for everyone.
-    /// </summary>
     public void RequestRandomObjectSpawn()
     {
         if (Application.isPlaying)
@@ -86,7 +84,6 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
         }
         else
         {
-            // Fallback for Unity Editor mode outside of Play Mode
             SpawnObjectsInternal();
         }
     }
@@ -97,9 +94,6 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
         SpawnObjectsInternal();
     }
 
-    /// <summary>
-    /// Call this method to clear objects from either Server or Client.
-    /// </summary>
     public void RequestClearAllObjects()
     {
         if (Application.isPlaying)
@@ -250,9 +244,10 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
             Vector3 finalPos = Vector3.zero;
             int attempts = 0;
 
+            // Use the separate spacing variable here instead of spacingFromRoad
             Vector3 checkBoxExtents = finalExtents;
-            checkBoxExtents.x += spacingFromRoad;
-            checkBoxExtents.z += spacingFromRoad;
+            checkBoxExtents.x += spacingBetweenObjects;
+            checkBoxExtents.z += spacingBetweenObjects;
             checkBoxExtents.y += 0.5f;
 
             Quaternion spawnRotation = Quaternion.identity;
@@ -300,6 +295,7 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
                         {
                             newBuilding.transform.parent = transform;
                         }
+                        BigMapSyncManager.Instance?.RegisterNewObjects();
                     }
                     else
                     {

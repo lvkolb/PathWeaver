@@ -280,6 +280,7 @@ public class MultiSplineDrawer : NetworkBehaviour
                 spawner.CheckForNewSplinesAndSpawn();
             }
         }
+        BigMapSyncManager.Instance?.RegisterNewObjects();
     }
 
     private void FinalizeLocalRoadGeneration()

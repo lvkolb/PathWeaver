@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System;
 
 public class BigMapSyncManager : MonoBehaviour
 {
@@ -17,6 +18,10 @@ public class BigMapSyncManager : MonoBehaviour
     [Header("Objects to Duplicate & Sync")]
     [SerializeField] private List<GameObject> objectsToSync = new List<GameObject>();
 
+    [Header("Component Whitelist")]
+    [Tooltip("Add full names of components/scripts that should NOT be destroyed (e.g., 'TrailRenderer', 'LineRenderer')")]
+    [SerializeField] private List<string> componentsToKeep = new List<string> { "TrailRenderer" };
+
     private struct SyncPair
     {
         public Transform MiniTransform;
@@ -26,9 +31,22 @@ public class BigMapSyncManager : MonoBehaviour
     private List<SyncPair> synchronizedPairs = new List<SyncPair>();
     private HashSet<Transform> knownTransforms = new HashSet<Transform>();
     private float calculatedPositionFactor = 1f;
+    private HashSet<string> whitelistLookup = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     private void Start()
     {
+        // Populate the lookup set for faster O(1) checks
+        if (componentsToKeep != null)
+        {
+            foreach (string compName in componentsToKeep)
+            {
+                if (!string.IsNullOrWhiteSpace(compName))
+                {
+                    whitelistLookup.Add(compName.Trim());
+                }
+            }
+        }
+
         if (transform.localScale != Vector3.one)
         {
             Debug.LogWarning($"The Manager GameObject '{name}' should have a scale of (1,1,1) to prevent hologram distortion! Resetting it now.");
@@ -107,18 +125,39 @@ public class BigMapSyncManager : MonoBehaviour
 
         if (!isSpline)
         {
-            // Regular Objects: Remove all scripts, physics and colliders
+            // Physics / Rigidbodies
             Rigidbody[] rbs = bigObjectGo.GetComponentsInChildren<Rigidbody>();
-            foreach (Rigidbody rb in rbs) Destroy(rb);
-
-            Collider[] colliders = bigObjectGo.GetComponentsInChildren<Collider>();
-            foreach (Collider col in colliders) Destroy(col);
-
-            MonoBehaviour[] scripts = bigObjectGo.GetComponentsInChildren<MonoBehaviour>();
-            foreach (MonoBehaviour script in scripts)
+            foreach (Rigidbody rb in rbs)
             {
-                if (script != null && script != this)
-                    Destroy(script);
+                if (!ShouldKeepComponent(rb)) Destroy(rb);
+            }
+
+            // Colliders
+            Collider[] colliders = bigObjectGo.GetComponentsInChildren<Collider>();
+            foreach (Collider col in colliders)
+            {
+                if (!ShouldKeepComponent(col)) Destroy(col);
+            }
+
+            // All MonoBehaviours (Custom scripts, TrailRenderer, etc.)
+            Component[] allComponents = bigObjectGo.GetComponentsInChildren<Component>();
+            foreach (Component comp in allComponents)
+            {
+                if (comp == null || comp is Transform || comp is BigMapSyncManager)
+                    continue;
+
+                // Check if it's a script or a behavior component we want to strip
+                if (comp is MonoBehaviour || comp is Renderer || comp is Collider || comp is Rigidbody)
+                {
+                    // Ensure we don't accidentally wipe fundamental renderers unless desired
+                    if (comp is MeshFilter || comp is MeshRenderer)
+                        continue;
+
+                    if (!ShouldKeepComponent(comp))
+                    {
+                        Destroy(comp);
+                    }
+                }
             }
         }
         else
@@ -127,13 +166,13 @@ public class BigMapSyncManager : MonoBehaviour
             Collider[] childColliders = bigObjectGo.GetComponentsInChildren<Collider>();
             foreach (Collider col in childColliders)
             {
-                col.enabled = false;
+                if (!ShouldKeepComponent(col)) col.enabled = false;
             }
 
             Rigidbody[] childRbs = bigObjectGo.GetComponentsInChildren<Rigidbody>();
             foreach (Rigidbody rb in childRbs)
             {
-                rb.isKinematic = true;
+                if (!ShouldKeepComponent(rb)) rb.isKinematic = true;
             }
         }
 
@@ -146,5 +185,16 @@ public class BigMapSyncManager : MonoBehaviour
         };
 
         synchronizedPairs.Add(pair);
+    }
+
+    private bool ShouldKeepComponent(Component comp)
+    {
+        if (comp == null) return false;
+
+        string typeName = comp.GetType().Name;
+        string fullTypeName = comp.GetType().FullName;
+
+        // Check against short name (e.g. "TrailRenderer") or full namespace name
+        return whitelistLookup.Contains(typeName) || (!string.IsNullOrEmpty(fullTypeName) && whitelistLookup.Contains(fullTypeName));
     }
 }

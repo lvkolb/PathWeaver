@@ -371,6 +371,12 @@ MonoBehaviour:
   - targetBridgeActionName: YButtonAction
     onLocalHoldStart:
       m_PersistentCalls:
+        m_Calls: []
+    onLocalHoldCancel:
+      m_PersistentCalls:
+        m_Calls: []
+    onLocalClick:
+      m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 9070810378855039333}
           m_TargetAssemblyTypeName: PlayerManager, Assembly-CSharp
@@ -384,9 +390,6 @@ MonoBehaviour:
             m_StringArgument: 
             m_BoolArgument: 0
           m_CallState: 2
-    onLocalHoldCancel:
-      m_PersistentCalls:
-        m_Calls: []
     onLocalUpOnlyFirstTime:
       m_PersistentCalls:
         m_Calls: []

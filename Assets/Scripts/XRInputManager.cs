@@ -16,6 +16,7 @@ public class XRInputManager : NetworkBehaviour
         [Header("Local Prefab Events")]
         public UnityEvent onLocalHoldStart;
         public UnityEvent onLocalHoldCancel;
+        public UnityEvent onLocalClick;
         public UnityEvent onLocalUpOnlyFirstTime;
     }
 
@@ -44,7 +45,19 @@ public class XRInputManager : NetworkBehaviour
                     TriggerLocalEvents(currentSceneMapping.actionName, "start");
                 };
 
-                // 2. Hardware released (cancelled)
+                // 2. Hardware click/trigger (performed)
+                currentSceneMapping.xrAction.performed += _ =>
+                {
+                    if (!IsOwner) return;
+
+                    // A: Executes the functions in the scene
+                    currentSceneMapping.onXRClick?.Invoke();
+
+                    // B: Runs the relevant functions on your local prefab
+                    TriggerLocalEvents(currentSceneMapping.actionName, "click");
+                };
+
+                // 3. Hardware released (cancelled)
                 currentSceneMapping.xrAction.canceled += _ =>
                 {
                     if (!IsOwner) return;
@@ -76,6 +89,10 @@ public class XRInputManager : NetworkBehaviour
             if (eventType == "start")
             {
                 localMatch.onLocalHoldStart?.Invoke();
+            }
+            else if (eventType == "click")
+            {
+                localMatch.onLocalClick?.Invoke();
             }
             else if (eventType == "cancel")
             {

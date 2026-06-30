@@ -59,7 +59,7 @@ public class CityHUD_v2 : MonoBehaviour
     TextMeshProUGUI _lblPhase;
 
     float _displayScore, _timeLeft;
-    bool _running = true;
+    bool _running = false;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     void Start()

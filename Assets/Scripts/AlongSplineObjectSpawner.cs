@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.Splines;
 using Unity.Mathematics;
 using Unity.Netcode;
+using System.Collections;
 
 public class AlongSplineObjectSpawner : NetworkBehaviour
 {
@@ -44,10 +45,19 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
     [Header("Multi-Pool Configurations")]
     [SerializeField] private List<SpawnGroupConfiguration> spawnGroups = new List<SpawnGroupConfiguration>();
 
+    [Header("VR Optimization Settings")]
+    [Tooltip("Maximum number of objects allowed to spawn in a single frame to prevent CPU spikes.")]
+    [SerializeField] private int maxSpawnsPerFrame = 3;
+
+    [Header("Cleanup Settings")]
+    [Tooltip("Drag your RandomObjectSpawnerManager here.")]
+    public RandomObjectSpawnerManager randomObjectSpawner;
+
     private int processedSplineCount = 0;
     private List<NetworkObject> spawnedNetworkDecoObjects = new List<NetworkObject>();
 
-    // Structure to cache gizmo data for visualization in the Editor scene view
+    private int objectsSpawnedThisFrame = 0;
+
     private struct GizmoDebugData
     {
         public Vector3 position;
@@ -58,7 +68,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
 
     private void Start()
     {
-        // Execute initial spawning for pre-existing splines if we are the server/host
         if (Application.isPlaying)
         {
             if (IsServer)
@@ -68,7 +77,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         }
         else
         {
-            // Fallback for Editor mode configuration
             if (splineContainer != null)
             {
                 processedSplineCount = splineContainer.Splines.Count;
@@ -80,27 +88,12 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
     {
         if (splineContainer == null) return;
 
-        System.Random rng = new System.Random();
-
-        // 1. First clear any overlapping decoration assets that might block the road path
         for (int i = 0; i < splineContainer.Splines.Count; i++)
         {
             DemolishObjectsInWayOfSpline(i);
         }
 
-        // 2. Spawn objects for ALL splines currently existing in the container setup
-        for (int i = 0; i < splineContainer.Splines.Count; i++)
-        {
-            foreach (var group in spawnGroups)
-            {
-                SpawnGroupForSingleSpline(i, group, rng);
-            }
-        }
-
-        // 3. Lock down the counter so subsequent runtime drawing actions only evaluate brand new splines
-        processedSplineCount = splineContainer.Splines.Count;
-
-        Debug.Log($"[Spawner] Initialized pre-existing layout. Generated assets for {processedSplineCount} starter splines.");
+        StartCoroutine(SpawnAllSplinesAsynchronously());
     }
 
     public void RequestSplineSpawn()
@@ -128,7 +121,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         CheckForNewSplinesAndSpawn();
     }
 
-    [ContextMenu("Check for new Splines and Spawn")]
     public void CheckForNewSplinesAndSpawn()
     {
         if (Application.isPlaying && multiSplineDrawer != null && multiSplineDrawer.IsDrawingActive)
@@ -136,15 +128,66 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
             return;
         }
 
-        if (Application.isPlaying && !IsServer) return;
         if (splineContainer == null) return;
-
-        System.Random rng = new System.Random();
 
         for (int i = 0; i < splineContainer.Splines.Count; i++)
         {
             DemolishObjectsInWayOfSpline(i);
         }
+
+        if (Application.isPlaying)
+        {
+            if (IsServer)
+            {
+                StartCoroutine(SpawnNewSplinesOnlyAsynchronously());
+            }
+        }
+        else
+        {
+            System.Random rng = new System.Random();
+            for (int i = 0; i < splineContainer.Splines.Count; i++)
+            {
+                if (i >= processedSplineCount)
+                {
+                    foreach (var group in spawnGroups)
+                    {
+                        SpawnGroupForSingleSpline(i, group, rng, null);
+                    }
+                }
+            }
+            processedSplineCount = splineContainer.Splines.Count;
+        }
+    }
+
+    private IEnumerator SpawnAllSplinesAsynchronously()
+    {
+        System.Random rng = new System.Random();
+        objectsSpawnedThisFrame = 0;
+
+        for (int i = 0; i < splineContainer.Splines.Count; i++)
+        {
+            foreach (var group in spawnGroups)
+            {
+                yield return StartCoroutine(SpawnGroupForSingleSpline(i, group, rng, this));
+            }
+        }
+
+        processedSplineCount = splineContainer.Splines.Count;
+        Debug.Log($"[Spawner] Asynchronous generation completed for {processedSplineCount} starter splines.");
+
+        // =================================================================================
+        // FIX: Wir warten Frames, bis alle Häuser-Collider im Physik-System erwacht sind!
+        // =================================================================================
+        yield return null;
+        yield return new WaitForFixedUpdate();
+
+        CleanUpOverlappingObjects();
+    }
+
+    private IEnumerator SpawnNewSplinesOnlyAsynchronously()
+    {
+        System.Random rng = new System.Random();
+        objectsSpawnedThisFrame = 0;
 
         for (int i = 0; i < splineContainer.Splines.Count; i++)
         {
@@ -152,12 +195,17 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
             {
                 foreach (var group in spawnGroups)
                 {
-                    SpawnGroupForSingleSpline(i, group, rng);
+                    yield return StartCoroutine(SpawnGroupForSingleSpline(i, group, rng, this));
                 }
             }
         }
 
         processedSplineCount = splineContainer.Splines.Count;
+
+        // Auch hier kurz warten, falls dynamisch neue Straßen entstehen
+        yield return null;
+        yield return new WaitForFixedUpdate();
+        CleanUpOverlappingObjects();
     }
 
     private void DemolishObjectsInWayOfSpline(int splineIndex)
@@ -229,14 +277,14 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         }
     }
 
-    private void SpawnGroupForSingleSpline(int splineIndex, SpawnGroupConfiguration group, System.Random rng)
+    private IEnumerator SpawnGroupForSingleSpline(int splineIndex, SpawnGroupConfiguration group, System.Random rng, MonoBehaviour coroutineHost)
     {
-        if (splineContainer == null || group.objectPrefabs == null || group.objectPrefabs.Count == 0) return;
+        if (splineContainer == null || group.objectPrefabs == null || group.objectPrefabs.Count == 0) yield break;
 
         var spline = splineContainer.Splines[splineIndex];
         Matrix4x4 containerMatrix = splineContainer.transform.localToWorldMatrix;
         float splineLength = SplineUtility.CalculateLength(spline, containerMatrix);
-        if (splineLength <= 0) return;
+        if (splineLength <= 0) yield break;
 
         float currentDistance = 0f;
 
@@ -255,11 +303,23 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                 if (group.spawnOnRightSide)
                 {
                     TryPlaceSideObject(splineIndex, (Vector3)worldPos, rightVector, true, group, rng);
+
+                    if (coroutineHost != null && objectsSpawnedThisFrame >= maxSpawnsPerFrame)
+                    {
+                        objectsSpawnedThisFrame = 0;
+                        yield return null;
+                    }
                 }
 
                 if (group.spawnOnLeftSide)
                 {
                     TryPlaceSideObject(splineIndex, (Vector3)worldPos, rightVector, false, group, rng);
+
+                    if (coroutineHost != null && objectsSpawnedThisFrame >= maxSpawnsPerFrame)
+                    {
+                        objectsSpawnedThisFrame = 0;
+                        yield return null;
+                    }
                 }
             }
 
@@ -318,10 +378,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         checkBoxExtents.z += group.spawnInterval * 0.4f;
         checkBoxExtents.y += 0.5f;
 
-        // ---------------------------------------------------------------------------------
-        // ULTIMATE SPLINE-DISTANCE CHECK (Bypasses Physics/Collider Bugs entirely)
-        // ---------------------------------------------------------------------------------
-        // Calculate the 4 world-space base corners of the actual house prefab
         Vector3 objExtents = (col.size * microScaleFactor) * 0.5f;
         Vector3 objCenterOffset = Vector3.Scale(col.center, targetScale);
         Vector3 finalCenter = spawnPosition + spawnRotation * objCenterOffset;
@@ -339,7 +395,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
 
         for (int s = 0; s < splineContainer.Splines.Count; s++)
         {
-            // TARGETED FIX: Ignore the road this house is actually supposed to sit next to!
             if (s == currentSplineIndex) continue;
 
             var targetSpline = splineContainer.Splines[s];
@@ -355,15 +410,11 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
 
                 if (distanceToRoadCenter < (halfRoadWidth + 0.3f))
                 {
-                    // Hit an INTERSECTING road (not its own!). Skip spawning.
                     return;
                 }
             }
         }
 
-        // ---------------------------------------------------------------------------------
-        // BEIBEHALTEN: METHODE 2 – Dynamic clearance check against other spawned objects
-        // ---------------------------------------------------------------------------------
         if (Application.isPlaying)
         {
             float scaledX = col.size.x * microScaleFactor;
@@ -371,39 +422,22 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
             float prefabDiagonal = Mathf.Sqrt(scaledX * scaledX + scaledZ * scaledZ);
             float dynamicSafetyRadius = (prefabDiagonal * 0.5f) * 1.05f;
 
-            NetworkObject[] allNetObjects = FindObjectsByType<NetworkObject>(FindObjectsInactive.Exclude);
-
-            foreach (var netObj in allNetObjects)
+            for (int k = spawnedNetworkDecoObjects.Count - 1; k >= 0; k--)
             {
-                if (netObj == this.NetworkObject || netObj.gameObject == splineContainer.gameObject)
+                NetworkObject cachedNetObj = spawnedNetworkDecoObjects[k];
+                if (cachedNetObj == null)
+                {
+                    spawnedNetworkDecoObjects.RemoveAt(k);
                     continue;
-
-                bool isSameGroup = false;
-                if (group.objectsFolder != null && netObj.transform.IsChildOf(group.objectsFolder))
-                {
-                    isSameGroup = true;
-                }
-                else
-                {
-                    foreach (var prefab in group.objectPrefabs)
-                    {
-                        if (netObj.gameObject.name.StartsWith(prefab.name))
-                        {
-                            isSameGroup = true;
-                            break;
-                        }
-                    }
                 }
 
-                if (isSameGroup && Vector3.Distance(spawnPosition, netObj.transform.position) < dynamicSafetyRadius)
+                if (Vector3.Distance(spawnPosition, cachedNetObj.transform.position) < dynamicSafetyRadius)
                 {
-                    return; // Space occupied by another deco object, skip spawning
+                    return;
                 }
             }
         }
-        BigMapSyncManager.Instance?.RegisterNewObjects();
 
-        // Final environment collision check (avoidance layers)
         if (!Physics.CheckBox(spawnPosition, checkBoxExtents, spawnRotation, group.avoidanceLayers))
         {
             GameObject newObj = Instantiate(randomPrefab, spawnPosition, spawnRotation);
@@ -416,6 +450,7 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                 {
                     netObj.Spawn(true);
                     spawnedNetworkDecoObjects.Add(netObj);
+                    objectsSpawnedThisFrame++;
 
                     Transform targetFolder = (group.objectsFolder != null) ? group.objectsFolder : this.transform;
                     NetworkObject parentNetObj = targetFolder.GetComponent<NetworkObject>();
@@ -428,6 +463,8 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                     {
                         newObj.transform.parent = targetFolder;
                     }
+
+                    BigMapSyncManager.Instance?.RegisterNewObjects();
                 }
                 else
                 {
@@ -446,7 +483,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                 if (netObj != null) spawnedNetworkDecoObjects.Add(netObj);
             }
 
-            // Caching for Editor preview
             float sX = col.size.x * microScaleFactor;
             float sZ = col.size.z * microScaleFactor;
             float diag = Mathf.Sqrt(sX * sX + sZ * sZ);
@@ -462,10 +498,13 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
             gizmoVisuals.Add(new GizmoDebugData { position = spawnPosition, radius = finalRadius, color = groupColor });
         }
     }
+
     [ContextMenu("Clear All Spawned Objects")]
     public void ClearAllSpawnedObjects()
     {
         if (Application.isPlaying && !IsServer) return;
+
+        StopAllCoroutines();
 
         for (int i = spawnedNetworkDecoObjects.Count - 1; i >= 0; i--)
         {
@@ -487,10 +526,9 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         }
 
         spawnedNetworkDecoObjects.Clear();
-        gizmoVisuals.Clear(); // Clear the gizmos
+        gizmoVisuals.Clear();
         processedSplineCount = 0;
         Debug.Log("All multi-pool objects generated by this spawner have been successfully cleared!");
-
     }
 
     [ContextMenu("Clear and Check")]
@@ -500,10 +538,19 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         CheckForNewSplinesAndSpawn();
     }
 
+    private void CleanUpOverlappingObjects()
+    {
+        if (randomObjectSpawner != null)
+        {
+            Debug.Log("[Post-Spawn Cleanup] Routing validation request to external RandomObjectSpawnerManager...");
+            randomObjectSpawner.RefreshObjectSpawning();
+        }
+        else
+        {
+            Debug.LogWarning("[Cleanup] RandomObjectSpawnerManager target reference missing in Inspector config!");
+        }
+    }
 
-    // =================================================================================
-    // GIZMOS VISUALIZATION
-    // =================================================================================
     private void OnDrawGizmosSelected()
     {
         if (gizmoVisuals == null || gizmoVisuals.Count == 0) return;
@@ -512,7 +559,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         {
             Gizmos.color = debugData.color;
 
-            // Draw the outer safety radius boundary as a flat circle
             int segments = 24;
             Vector3 lastPoint = debugData.position + new Vector3(debugData.radius, 0, 0);
 
@@ -525,7 +571,6 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                 lastPoint = nextPoint;
             }
 
-            // Draw a semi-transparent solid core in the center of the zone
             Gizmos.color = new Color(debugData.color.r, debugData.color.g, debugData.color.b, 0.2f);
             Gizmos.DrawSphere(debugData.position, debugData.radius * 0.15f);
         }

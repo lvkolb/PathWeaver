@@ -6,7 +6,6 @@ using Unity.Netcode;
 
 public class RandomObjectSpawnerManager : NetworkBehaviour
 {
-    // A custom class to pair a Prefab with its custom spawn weight configuration
     [System.Serializable]
     public class SpawnableItem
     {
@@ -23,12 +22,10 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
     }
 
     [Header("Prefabs & quantity")]
-    [Tooltip("Configure your prefabs and their individual spawn likelihood weights here. E.g. 20, 40, 60, 20")]
     public List<SpawnableItem> prefabsToSpawn = new List<SpawnableItem>();
     public int amount = 100;
 
     [Header("Rotation Settings")]
-    [Tooltip("If enabled, spawned objects will rotate randomly between 0 and 360 degrees around the Y axis.")]
     public bool useRandomRotation = true;
 
     [Header("Road Settings")]
@@ -36,12 +33,17 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
     public MultiSplineDrawer multiSplineDrawer;
     public SplineContainer roadSpline;
 
-    [Header("Avoid collision")]
+    [Header("Avoid collision (Spawn)")]
+    [Tooltip("Layers to avoid during the initial spawn process (e.g. Road, Nature, Environment).")]
     public LayerMask avoidanceLayers;
     [Tooltip("The safety buffer space around buildings to prevent overlapping with the road.")]
     public float spacingFromRoad = 0.65f;
     [Tooltip("The safety buffer space between individual spawned objects. Keep low for dense placement.")]
     public float spacingBetweenObjects = 0.1f;
+
+    [Header("Cleanup Settings (Refresh)")]
+    [Tooltip("ONLY select the layer of your houses here! If a tree detects this layer during refresh, it gets deleted.")]
+    public LayerMask obstaclesToRefreshAgainst;
 
     [Header("Area Reference")]
     public Transform areaObject;
@@ -65,22 +67,12 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
         }
     }
 
-    // =================================================================================
-    // MULTIPLAYER SERVER/CLIENT ROUTINE (Unity 6 Compatible)
-    // =================================================================================
-
     public void RequestRandomObjectSpawn()
     {
         if (Application.isPlaying)
         {
-            if (IsServer)
-            {
-                SpawnObjectsInternal();
-            }
-            else if (IsClient)
-            {
-                TriggerRandomSpawnRpc();
-            }
+            if (IsServer) SpawnObjectsInternal();
+            else if (IsClient) TriggerRandomSpawnRpc();
         }
         else
         {
@@ -98,14 +90,8 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
     {
         if (Application.isPlaying)
         {
-            if (IsServer)
-            {
-                ClearAllObjectsInternal();
-            }
-            else if (IsClient)
-            {
-                TriggerClearAllRpc();
-            }
+            if (IsServer) ClearAllObjectsInternal();
+            else if (IsClient) TriggerClearAllRpc();
         }
         else
         {
@@ -119,17 +105,29 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
         ClearAllObjectsInternal();
     }
 
-    // =================================================================================
-    // INTERNAL CORE LOGIC (Executed on Server at Runtime)
-    // =================================================================================
-
     [ContextMenu("Refresh object spawning")]
     public void RefreshObjectSpawning()
     {
         if (Application.isPlaying && !IsServer) return;
+
+        // Fetch all nested children to safely catch editor-pre-placed trees
+        NetworkObject[] childNetObjects = GetComponentsInChildren<NetworkObject>(true);
+        foreach (var netObj in childNetObjects)
+        {
+            if (netObj != this.GetComponent<NetworkObject>() && !spawnedNetworkObjects.Contains(netObj))
+            {
+                spawnedNetworkObjects.Add(netObj);
+            }
+        }
+
+        // Force layout sync to ensure the physics engine has processed the micro-scaled house transforms
+        Physics.SyncTransforms();
+
         ValidateExistingBuildings();
 
         SpawnObjectsInternal();
+
+        Debug.Log("Spawning refreshed and synchronized.");
     }
 
     [ContextMenu("Clear All Objects")]
@@ -143,17 +141,10 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
         for (int i = spawnedNetworkObjects.Count - 1; i >= 0; i--)
         {
             NetworkObject netObj = spawnedNetworkObjects[i];
-
             if (netObj != null)
             {
-                if (Application.isPlaying)
-                {
-                    netObj.Despawn(true);
-                }
-                else
-                {
-                    DestroyImmediate(netObj.gameObject);
-                }
+                if (Application.isPlaying) netObj.Despawn(true);
+                else DestroyImmediate(netObj.gameObject);
             }
         }
 
@@ -189,7 +180,29 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
 
             float totalRequiredDistance = halfRoadWidth + spacingFromRoad + houseSafetyRadius;
 
-            if (!IsPositionFarFromAllSplines(netObj.transform.position, totalRequiredDistance))
+            // 1. Check spline distance
+            bool isTooCloseToSpline = !IsPositionFarFromAllSplines(netObj.transform.position, totalRequiredDistance);
+
+            // 2. Unfehlbarer Tag Check
+            bool isCollidingWithBuilding = false;
+
+            // Scanne großzügig um das Objekt herum (auch nützlich bei winzig skalierten Häusern)
+            Collider[] hitColliders = Physics.OverlapSphere(netObj.transform.position, 1.5f, Physics.AllLayers, QueryTriggerInteraction.Collide);
+
+            foreach (var hit in hitColliders)
+            {
+                if (hit.gameObject == netObj.gameObject || hit.transform.IsChildOf(netObj.transform))
+                    continue;
+
+                // Vergleiche Tag der Häuser
+                if (hit.CompareTag("Building") || (hit.transform.parent != null && hit.transform.parent.CompareTag("Building")))
+                {
+                    isCollidingWithBuilding = true;
+                    break;
+                }
+            }
+
+            if (isTooCloseToSpline || isCollidingWithBuilding)
             {
                 if (Application.isPlaying)
                     netObj.Despawn(true);
@@ -201,7 +214,7 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
         }
 
         int removedCount = startCount - spawnedNetworkObjects.Count;
-        Debug.Log($"<color=orange>Validation complete:</color> {removedCount} Buildings removed. " +
+        Debug.Log($"<color=orange>Validation complete:</color> {removedCount} Objects removed. " +
                   $"<color=lime>Current total: {spawnedNetworkObjects.Count}</color>");
     }
 
@@ -244,7 +257,6 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
             Vector3 finalPos = Vector3.zero;
             int attempts = 0;
 
-            // Use the separate spacing variable here instead of spacingFromRoad
             Vector3 checkBoxExtents = finalExtents;
             checkBoxExtents.x += spacingBetweenObjects;
             checkBoxExtents.z += spacingBetweenObjects;

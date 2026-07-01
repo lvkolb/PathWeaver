@@ -3,6 +3,7 @@ using UnityEngine.Splines;
 using System.Collections.Generic;
 using Unity.Mathematics;
 using Unity.Netcode;
+using System.Collections;
 
 public class RandomObjectSpawnerManager : NetworkBehaviour
 {
@@ -48,6 +49,10 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
     [Header("Area Reference")]
     public Transform areaObject;
 
+    [Header("Performance Settings")]
+    [Tooltip("Maximum number of objects allowed to spawn in a single frame to prevent CPU spikes.")]
+    [SerializeField] private int maxSpawnsPerFrame = 5;
+
     private List<NetworkObject> spawnedNetworkObjects = new List<NetworkObject>();
 
     private void OnValidate()
@@ -71,19 +76,20 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
     {
         if (Application.isPlaying)
         {
-            if (IsServer) SpawnObjectsInternal();
+            if (IsServer) StartCoroutine(SpawnObjectsInternalRoutine());
             else if (IsClient) TriggerRandomSpawnRpc();
         }
         else
         {
-            SpawnObjectsInternal();
+            // Fallback for editor mode (non-async)
+            SpawnObjectsImmediateEditor();
         }
     }
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     private void TriggerRandomSpawnRpc()
     {
-        SpawnObjectsInternal();
+        StartCoroutine(SpawnObjectsInternalRoutine());
     }
 
     public void RequestClearAllObjects()
@@ -125,9 +131,16 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
 
         ValidateExistingBuildings();
 
-        SpawnObjectsInternal();
+        if (Application.isPlaying)
+        {
+            StartCoroutine(SpawnObjectsInternalRoutine());
+        }
+        else
+        {
+            SpawnObjectsImmediateEditor();
+        }
 
-        Debug.Log("Spawning refreshed and synchronized.");
+        Debug.Log("Spawning refresh initiated.");
     }
 
     [ContextMenu("Clear All Objects")]
@@ -138,6 +151,8 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
 
     private void ClearAllObjectsInternal()
     {
+        StopAllCoroutines();
+
         for (int i = spawnedNetworkObjects.Count - 1; i >= 0; i--)
         {
             NetworkObject netObj = spawnedNetworkObjects[i];
@@ -180,21 +195,15 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
 
             float totalRequiredDistance = halfRoadWidth + spacingFromRoad + houseSafetyRadius;
 
-            // 1. Check spline distance (Stays active for road clearance)
             bool isTooCloseToSpline = !IsPositionFarFromAllSplines(netObj.transform.position, totalRequiredDistance);
-
-            // 2. PRECISION TAG CHECK (Matches the exact bounds of the tree)
             bool isCollidingWithBuilding = false;
 
             Vector3 checkBoxExtents = halfSize;
             checkBoxExtents.x += spacingBetweenObjects;
             checkBoxExtents.z += spacingBetweenObjects;
-
-            // Vertical column for reliable micro-scale house matching
             checkBoxExtents.y = 10.0f;
             Vector3 checkCenter = netObj.transform.position + Vector3.up * (checkBoxExtents.y * 0.5f);
 
-            // Scan using the precise Box shape instead of a wide sphere
             Collider[] hitColliders = Physics.OverlapBox(checkCenter, checkBoxExtents, netObj.transform.rotation, Physics.AllLayers, QueryTriggerInteraction.Collide);
 
             foreach (var hit in hitColliders)
@@ -202,7 +211,6 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
                 if (hit.gameObject == netObj.gameObject || hit.transform.IsChildOf(netObj.transform))
                     continue;
 
-                // Only trigger deletion if the precise box actually hits a building tag
                 if (hit.CompareTag("Building") || (hit.transform.parent != null && hit.transform.parent.CompareTag("Building")))
                 {
                     isCollidingWithBuilding = true;
@@ -232,9 +240,12 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
         RequestRandomObjectSpawn();
     }
 
-    private void SpawnObjectsInternal()
+    // =================================================================================
+    // ASYNCHRONOUS PERFORMANCE ROUTINE (Runtime)
+    // =================================================================================
+    private IEnumerator SpawnObjectsInternalRoutine()
     {
-        if (roadSpline == null || areaObject == null || prefabsToSpawn == null || prefabsToSpawn.Count == 0) return;
+        if (roadSpline == null || areaObject == null || prefabsToSpawn == null || prefabsToSpawn.Count == 0) yield break;
 
         if (multiSplineDrawer != null)
         {
@@ -245,12 +256,12 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
         float halfLength = (areaObject.localScale.z * 10f) / 2f;
         float halfRoadWidth = roadWidth * 0.5f;
 
-        int buildingsToCreate = amount - spawnedNetworkObjects.Count;
+        int objectsSpawnedThisFrame = 0;
 
-        for (int i = 0; i < buildingsToCreate; i++)
+        while (spawnedNetworkObjects.Count < amount)
         {
             GameObject selectedPrefab = GetWeightedRandomPrefab();
-            if (selectedPrefab == null) continue;
+            if (selectedPrefab == null) yield break;
 
             BoxCollider col = selectedPrefab.GetComponent<BoxCollider>();
             if (col == null) continue;
@@ -297,42 +308,119 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
             if (validPosFound)
             {
                 GameObject newBuilding = Instantiate(selectedPrefab, finalPos, spawnRotation, null);
+                NetworkObject netObj = newBuilding.GetComponent<NetworkObject>();
 
-                if (Application.isPlaying)
+                if (netObj != null)
                 {
-                    NetworkObject netObj = newBuilding.GetComponent<NetworkObject>();
-                    if (netObj != null)
-                    {
-                        netObj.Spawn(true);
-                        spawnedNetworkObjects.Add(netObj);
+                    netObj.Spawn(true);
+                    spawnedNetworkObjects.Add(netObj);
 
-                        NetworkObject parentNetObj = GetComponent<NetworkObject>();
-                        if (parentNetObj != null && parentNetObj.IsSpawned)
-                        {
-                            netObj.TrySetParent(transform);
-                        }
-                        else
-                        {
-                            newBuilding.transform.parent = transform;
-                        }
-                        BigMapSyncManager.Instance?.RegisterNewObjects();
+                    NetworkObject parentNetObj = GetComponent<NetworkObject>();
+                    if (parentNetObj != null && parentNetObj.IsSpawned)
+                    {
+                        netObj.TrySetParent(transform);
                     }
                     else
                     {
-                        Debug.LogError($"Prefab {selectedPrefab.name} is missing a NetworkObject component!");
-                        Destroy(newBuilding);
+                        newBuilding.transform.parent = transform;
                     }
+                    BigMapSyncManager.Instance?.RegisterNewObjects();
                 }
                 else
                 {
-                    newBuilding.transform.parent = transform;
-                    NetworkObject netObj = newBuilding.GetComponent<NetworkObject>();
-                    if (netObj != null) spawnedNetworkObjects.Add(netObj);
+                    Debug.LogError($"Prefab {selectedPrefab.name} is missing a NetworkObject component!");
+                    Destroy(newBuilding);
                 }
+
+                // Increment frame threshold tracker
+                objectsSpawnedThisFrame++;
+
+                if (objectsSpawnedThisFrame >= maxSpawnsPerFrame)
+                {
+                    objectsSpawnedThisFrame = 0;
+                    yield return null; // Distribute workload over multiple frames
+                }
+            }
+            else
+            {
+                // Break out of the loop if we repeatedly fail to find empty space 
+                // to prevent endless loops on small terrains
+                yield return null;
             }
         }
 
-        Debug.Log($"<color=lime>Done!</color> Random objects created. Current setup size: {spawnedNetworkObjects.Count}");
+        Debug.Log($"<color=lime>Done!</color> Random objects completely generated. Total size: {spawnedNetworkObjects.Count}");
+    }
+
+    // =================================================================================
+    // IMMEDIATE EDITOR FALLBACK (Non-Coroutines for Unity ContextMenus)
+    // =================================================================================
+    private void SpawnObjectsImmediateEditor()
+    {
+        if (roadSpline == null || areaObject == null || prefabsToSpawn == null || prefabsToSpawn.Count == 0) return;
+
+        if (multiSplineDrawer != null) roadWidth = multiSplineDrawer.splineWidth;
+
+        float halfWidth = (areaObject.localScale.x * 10f) / 2f;
+        float halfLength = (areaObject.localScale.z * 10f) / 2f;
+        float halfRoadWidth = roadWidth * 0.5f;
+
+        int buildingsToCreate = amount - spawnedNetworkObjects.Count;
+
+        for (int i = 0; i < buildingsToCreate; i++)
+        {
+            GameObject selectedPrefab = GetWeightedRandomPrefab();
+            if (selectedPrefab == null) break;
+
+            BoxCollider col = selectedPrefab.GetComponent<BoxCollider>();
+            if (col == null) continue;
+
+            Vector3 prefabScale = selectedPrefab.transform.localScale;
+            Vector3 finalExtents = Vector3.Scale(col.size, prefabScale) * 0.5f;
+
+            float houseSafetyRadius = Mathf.Max(finalExtents.x, finalExtents.z);
+            float totalRequiredDistance = halfRoadWidth + spacingFromRoad + houseSafetyRadius;
+
+            bool validPosFound = false;
+            Vector3 finalPos = Vector3.zero;
+            int attempts = 0;
+
+            Vector3 checkBoxExtents = finalExtents;
+            checkBoxExtents.x += spacingBetweenObjects;
+            checkBoxExtents.z += spacingBetweenObjects;
+            checkBoxExtents.y += 0.5f;
+
+            Quaternion spawnRotation = Quaternion.identity;
+            if (useRandomRotation)
+            {
+                float randomYAngle = UnityEngine.Random.Range(0f, 360f);
+                spawnRotation = Quaternion.Euler(0f, randomYAngle, 0f);
+            }
+
+            while (!validPosFound && attempts < 50)
+            {
+                attempts++;
+                float randomX = UnityEngine.Random.Range(-halfWidth, halfWidth);
+                float randomZ = UnityEngine.Random.Range(-halfLength, halfLength);
+                Vector3 testPos = areaObject.position + new Vector3(randomX, areaObject.position.y, randomZ);
+
+                if (IsPositionFarFromAllSplines(testPos, totalRequiredDistance))
+                {
+                    if (!Physics.CheckBox(testPos, checkBoxExtents, spawnRotation, avoidanceLayers))
+                    {
+                        finalPos = testPos;
+                        validPosFound = true;
+                    }
+                }
+            }
+
+            if (validPosFound)
+            {
+                GameObject newBuilding = Instantiate(selectedPrefab, finalPos, spawnRotation, this.transform);
+                NetworkObject netObj = newBuilding.GetComponent<NetworkObject>();
+                if (netObj != null) spawnedNetworkObjects.Add(netObj);
+            }
+        }
     }
 
     private GameObject GetWeightedRandomPrefab()
@@ -340,10 +428,7 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
         float totalWeight = 0f;
         foreach (var item in prefabsToSpawn)
         {
-            if (item.prefab != null && item.weight > 0f)
-            {
-                totalWeight += item.weight;
-            }
+            if (item.prefab != null && item.weight > 0f) totalWeight += item.weight;
         }
 
         if (totalWeight <= 0f) return null;
@@ -356,10 +441,7 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
             if (item.prefab == null || item.weight <= 0f) continue;
 
             currentWeightTracker += item.weight;
-            if (randomRoll <= currentWeightTracker)
-            {
-                return item.prefab;
-            }
+            if (randomRoll <= currentWeightTracker) return item.prefab;
         }
 
         return null;

@@ -1,34 +1,53 @@
 using UnityEngine;
+using Unity.Netcode;
 
-public class PlayerManager : MonoBehaviour
+public class PlayerManager : NetworkBehaviour
 {
     public enum PlayerMode { Weaver, Jammer }
-    public PlayerMode currentMode;
+
+    // Synced state across the network. Only the owner can request a change, but everyone updates.
+    public NetworkVariable<PlayerMode> currentMode = new NetworkVariable<PlayerMode>(
+        PlayerMode.Weaver,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Owner // Allowed to write if this object belongs to the player
+    );
 
     public GameObject weaver;
     public GameObject jammer;
 
+    public override void OnNetworkSpawn()
+    {
+        // Hook up the state change listener for everyone
+        currentMode.OnValueChanged += OnModeChanged;
+
+        // Initial setup
+        UpdateVisuals(currentMode.Value);
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        currentMode.OnValueChanged -= OnModeChanged;
+    }
+
     [ContextMenu("ChangePlayerMode")]
     public void ChangePlayerMode()
     {
-        // Switch to mode 1 (if Weaver, then Jammer; otherwise, Weaver)
-        currentMode = (currentMode == PlayerMode.Weaver) ? PlayerMode.Jammer : PlayerMode.Weaver;
+        // Only the owner of this player object should toggle the mode
+        if (!IsOwner) return;
 
-        // 2. Enable/disable GameObjects as required
-        UpdateVisuals();
-
-        Debug.Log("PlayerMode changed to: " + currentMode);
+        PlayerMode nextMode = (currentMode.Value == PlayerMode.Weaver) ? PlayerMode.Jammer : PlayerMode.Weaver;
+        currentMode.Value = nextMode;
     }
 
-    void Start()
+    private void OnModeChanged(PlayerMode previousMode, PlayerMode newMode)
     {
-        UpdateVisuals();
+        UpdateVisuals(newMode);
     }
 
-    // Handles enabling and disabling
-    private void UpdateVisuals()
+    // Handles enabling and disabling across all instances (Host & Clients)
+    private void UpdateVisuals(PlayerMode mode)
     {
-        weaver.SetActive(currentMode == PlayerMode.Weaver);
-        jammer.SetActive(currentMode == PlayerMode.Jammer);
+        if (weaver != null) weaver.SetActive(mode == PlayerMode.Weaver);
+        if (jammer != null) jammer.SetActive(mode == PlayerMode.Jammer);
     }
 }

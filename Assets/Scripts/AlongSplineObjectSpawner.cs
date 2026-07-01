@@ -538,14 +538,22 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
 
     private void CleanUpOverlappingObjects()
     {
-        if (randomObjectSpawner != null)
+        // Check if the reference exists AND if the script/GameObject is active and enabled
+        if (randomObjectSpawner != null && randomObjectSpawner.isActiveAndEnabled)
         {
-            Debug.Log("[Post-Spawn Cleanup] Routing validation request to external RandomObjectSpawnerManager...");
+            Debug.Log("[Post-Spawn Cleanup] Routing validation request to active external RandomObjectSpawnerManager...");
             randomObjectSpawner.RefreshObjectSpawning();
         }
         else
         {
-            Debug.LogWarning("[Cleanup] RandomObjectSpawnerManager target reference missing in Inspector config!");
+            if (randomObjectSpawner == null)
+            {
+                Debug.LogWarning("[Cleanup] RandomObjectSpawnerManager target reference missing in Inspector config!");
+            }
+            else
+            {
+                Debug.Log("[Cleanup] RandomObjectSpawnerManager is assigned but currently disabled/inactive. Skipping refresh step.");
+            }
         }
     }
 

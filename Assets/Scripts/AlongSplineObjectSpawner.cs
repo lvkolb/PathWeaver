@@ -175,9 +175,7 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         processedSplineCount = splineContainer.Splines.Count;
         Debug.Log($"[Spawner] Asynchronous generation completed for {processedSplineCount} starter splines.");
 
-        // =================================================================================
-        // FIX: Wir warten Frames, bis alle Häuser-Collider im Physik-System erwacht sind!
-        // =================================================================================
+        // We wait for a few frames until all the house colliders have been activated in the physics system!
         yield return null;
         yield return new WaitForFixedUpdate();
 
@@ -202,7 +200,7 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
 
         processedSplineCount = splineContainer.Splines.Count;
 
-        // Auch hier kurz warten, falls dynamisch neue Straßen entstehen
+        // Wait a moment here too, in case new roads are created dynamically
         yield return null;
         yield return new WaitForFixedUpdate();
         CleanUpOverlappingObjects();

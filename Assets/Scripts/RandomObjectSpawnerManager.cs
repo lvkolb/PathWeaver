@@ -180,21 +180,29 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
 
             float totalRequiredDistance = halfRoadWidth + spacingFromRoad + houseSafetyRadius;
 
-            // 1. Check spline distance
+            // 1. Check spline distance (Stays active for road clearance)
             bool isTooCloseToSpline = !IsPositionFarFromAllSplines(netObj.transform.position, totalRequiredDistance);
 
-            // 2. Unfehlbarer Tag Check
+            // 2. PRECISION TAG CHECK (Matches the exact bounds of the tree)
             bool isCollidingWithBuilding = false;
 
-            // Scanne großzügig um das Objekt herum (auch nützlich bei winzig skalierten Häusern)
-            Collider[] hitColliders = Physics.OverlapSphere(netObj.transform.position, 1.5f, Physics.AllLayers, QueryTriggerInteraction.Collide);
+            Vector3 checkBoxExtents = halfSize;
+            checkBoxExtents.x += spacingBetweenObjects;
+            checkBoxExtents.z += spacingBetweenObjects;
+
+            // Vertical column for reliable micro-scale house matching
+            checkBoxExtents.y = 10.0f;
+            Vector3 checkCenter = netObj.transform.position + Vector3.up * (checkBoxExtents.y * 0.5f);
+
+            // Scan using the precise Box shape instead of a wide sphere
+            Collider[] hitColliders = Physics.OverlapBox(checkCenter, checkBoxExtents, netObj.transform.rotation, Physics.AllLayers, QueryTriggerInteraction.Collide);
 
             foreach (var hit in hitColliders)
             {
                 if (hit.gameObject == netObj.gameObject || hit.transform.IsChildOf(netObj.transform))
                     continue;
 
-                // Vergleiche Tag der Häuser
+                // Only trigger deletion if the precise box actually hits a building tag
                 if (hit.CompareTag("Building") || (hit.transform.parent != null && hit.transform.parent.CompareTag("Building")))
                 {
                     isCollidingWithBuilding = true;

@@ -285,6 +285,8 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
         if (splineLength <= 0) yield break;
 
         float currentDistance = 0f;
+        int evaluationsThisFrame = 0;
+        int maxEvaluationsPerFrame = 8; // Prevent physics engine overload in a single frame
 
         while (currentDistance <= splineLength)
         {
@@ -301,32 +303,29 @@ public class AlongSplineObjectSpawner : NetworkBehaviour
                 if (group.spawnOnRightSide)
                 {
                     TryPlaceSideObject(splineIndex, (Vector3)worldPos, rightVector, true, group, rng);
-
-                    if (coroutineHost != null && objectsSpawnedThisFrame >= maxSpawnsPerFrame)
-                    {
-                        objectsSpawnedThisFrame = 0;
-                        yield return null;
-                    }
+                    evaluationsThisFrame++;
                 }
 
                 if (group.spawnOnLeftSide)
                 {
                     TryPlaceSideObject(splineIndex, (Vector3)worldPos, rightVector, false, group, rng);
-
-                    if (coroutineHost != null && objectsSpawnedThisFrame >= maxSpawnsPerFrame)
-                    {
-                        objectsSpawnedThisFrame = 0;
-                        yield return null;
-                    }
+                    evaluationsThisFrame++;
                 }
             }
 
             float randomness = (float)(rng.NextDouble() * (group.spawnIntervalRandomness * 2) - group.spawnIntervalRandomness);
             float nextStep = group.spawnInterval + randomness;
-
             if (nextStep < 0.001f) nextStep = 0.001f;
 
             currentDistance += nextStep;
+
+            // Yield if we spawned too many objects OR evaluated too many physics positions
+            if (coroutineHost != null && (objectsSpawnedThisFrame >= maxSpawnsPerFrame || evaluationsThisFrame >= maxEvaluationsPerFrame))
+            {
+                objectsSpawnedThisFrame = 0;
+                evaluationsThisFrame = 0;
+                yield return null; // Distribute load safely to the next frame
+            }
         }
     }
 

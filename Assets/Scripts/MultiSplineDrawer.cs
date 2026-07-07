@@ -55,11 +55,25 @@ public class MultiSplineDrawer : NetworkBehaviour
     private SplineContainer splineContainer;
     private bool isHolding;
     private Component[] widthComponents;
+    private List<System.Reflection.MethodInfo> cachedRebuildMethods = new List<System.Reflection.MethodInfo>();
+    private float uiUpdateTimer = 0f;
+
 
     private void Awake()
     {
         splineContainer = targetSpline.GetComponent<SplineContainer>();
         widthComponents = targetSpline.GetComponents<Component>();
+
+        // Cache reflection lookups once on startup to prevent VR frame drops
+        foreach (var comp in widthComponents)
+        {
+            if (comp == null) continue;
+            var rebuildMethod = comp.GetType().GetMethod("Rebuild", BindingFlags.Public | BindingFlags.Instance);
+            if (rebuildMethod != null)
+            {
+                cachedRebuildMethods.Add(rebuildMethod);
+            }
+        }
     }
 
     // =================================================================================
@@ -81,44 +95,33 @@ public class MultiSplineDrawer : NetworkBehaviour
 
         drawingSessions.Clear();
 
-        GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsInactive.Exclude);
-
-        foreach (GameObject obj in allObjects)
+        // O(1) lookup instead of searching the entire scene hierarchy
+        foreach (Transform sourceTrans in DrawingSourceTag.ActiveSources)
         {
-            if (obj.layer == layerIndex)
+            if (sourceTrans == null || sourceTrans.gameObject.layer != layerIndex) continue;
+            if (sourceTrans.name.Contains("(Clone)")) continue;
+
+            // Parent check
+            Transform parent = sourceTrans.parent;
+            bool parentAlreadyHasLayer = false;
+            while (parent != null)
             {
-                // Prevent decorative objects  
-                // or houses that have already been spawned from being registered as drawing pens/sources!
-                if (obj.name.Contains("(Clone)"))
+                if (parent.gameObject.layer == layerIndex)
                 {
-                    continue;
+                    parentAlreadyHasLayer = true;
+                    break;
                 }
+                parent = parent.parent;
+            }
 
-                Transform parent = obj.transform.parent;
-                bool parentAlreadyHasLayer = false;
-
-                while (parent != null)
-                {
-                    if (parent.gameObject.layer == layerIndex)
-                    {
-                        parentAlreadyHasLayer = true;
-                        break;
-                    }
-                    parent = parent.parent;
-                }
-
-                if (!parentAlreadyHasLayer)
-                {
-                    DrawingSession newSession = new DrawingSession
-                    {
-                        drawingSource = obj.transform
-                    };
-                    drawingSessions.Add(newSession);
-                }
+            if (!parentAlreadyHasLayer)
+            {
+                DrawingSession newSession = new DrawingSession { drawingSource = sourceTrans };
+                drawingSessions.Add(newSession);
             }
         }
 
-        Debug.Log($"[MultiSplineDrawer] Found and registered {drawingSessions.Count} active drawing sources.");
+        Debug.Log($"[MultiSplineDrawer] Registered {drawingSessions.Count} sources via high-performance registry.");
     }
 
     // =================================================================================
@@ -326,7 +329,12 @@ public class MultiSplineDrawer : NetworkBehaviour
         }
 
         // Live refresh UI and logs frame-by-frame while drawing
-        UpdateLiveKnotUIDisplay();
+        uiUpdateTimer += Time.deltaTime;
+        if (uiUpdateTimer >= 0.1f) // Update UI only 10 times per second, not every single frame
+        {
+            UpdateLiveKnotUIDisplay();
+            uiUpdateTimer = 0f;
+        }
 
         if (contentChanged)
         {
@@ -350,9 +358,7 @@ public class MultiSplineDrawer : NetworkBehaviour
         return totalLength;
     }
 
-    /// <summary>
-    /// Live feedback updates for both the UI text overlay and console debugging logs.
-    /// </summary>
+    // Live feedback updates for both the UI text overlay and console debugging logs.
     private void UpdateLiveKnotUIDisplay()
     {
         float currentLength = GetAllSplinesPhysicalLength();
@@ -571,11 +577,13 @@ public class MultiSplineDrawer : NetworkBehaviour
 
     private void RebuildAllRoadComponents()
     {
-        foreach (var comp in widthComponents)
+        // High-performance execution using cached method infos
+        for (int i = 0; i < cachedRebuildMethods.Count; i++)
         {
-            if (comp == null) continue;
-            var rebuild = comp.GetType().GetMethod("Rebuild", BindingFlags.Public | BindingFlags.Instance);
-            rebuild?.Invoke(comp, null);
+            if (widthComponents[i] != null)
+            {
+                cachedRebuildMethods[i].Invoke(widthComponents[i], null);
+            }
         }
     }
 }

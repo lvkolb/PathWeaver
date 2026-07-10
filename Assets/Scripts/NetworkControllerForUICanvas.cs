@@ -11,6 +11,11 @@ public class NetworkControllerForUICanvas : MonoBehaviour
 {
     [Header("UI Canvas References")]
     [SerializeField] private GameObject[] hiddenUI;
+    [Header("Icon References")]
+    [SerializeField] private GameObject iconOnVisible;
+    [SerializeField] private GameObject iconOnInvisible;
+
+
     private bool isVisible = true;
 
     [SerializeField] private Button hostButton;
@@ -145,21 +150,28 @@ public class NetworkControllerForUICanvas : MonoBehaviour
     {
         if (isVisible)
         {
+            iconOnInvisible.SetActive(true);
+            iconOnVisible.SetActive(false);
+
             foreach (var element in hiddenUI)
             {
 
                 element.SetActive(false);
-                isVisible = false;
             }
+            isVisible = false;
+
         }
         else
         {
+            iconOnInvisible.SetActive(false);
+            iconOnVisible.SetActive(true);
             foreach (var element in hiddenUI)
             {
 
                 element.SetActive(true);
-                isVisible = true;
             }
+            isVisible = true;
+
         }
     }
 }

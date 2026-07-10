@@ -10,6 +10,11 @@ public class SplineAnimateLoop : MonoBehaviour
     [Header("Settings")]
     [SerializeField] private float speed = 5f;
 
+    [Header("Rotation Axis Toggles")]
+    [SerializeField] private bool rotateX = true;
+    [SerializeField] private bool rotateY = true;
+    [SerializeField] private bool rotateZ = true;
+
     // Normalized time tracking (0.0 to 1.0)
     private float progress = 0f;
     private float splineLength;
@@ -47,11 +52,26 @@ public class SplineAnimateLoop : MonoBehaviour
         Vector3 worldPosition = splineContainer.transform.TransformPoint(localPosition);
         Vector3 worldForward = splineContainer.transform.TransformDirection(localForward);
 
-        // Apply position and rotation to the target object
+        // Apply position to the target object
         objectToAnimate.transform.position = worldPosition;
+
+        // Apply filtered rotation
         if (worldForward != Vector3.zero)
         {
-            objectToAnimate.transform.rotation = Quaternion.LookRotation(worldForward, splineContainer.transform.up);
+            // Calculate the full target rotation from the spline
+            Quaternion targetRotation = Quaternion.LookRotation(worldForward, splineContainer.transform.up);
+
+            // Convert both current and target rotations to Euler angles
+            Vector3 currentEuler = objectToAnimate.transform.rotation.eulerAngles;
+            Vector3 targetEuler = targetRotation.eulerAngles;
+
+            // Filter axes based on toggles
+            float finalX = rotateX ? targetEuler.x : currentEuler.x;
+            float finalY = rotateY ? targetEuler.y : currentEuler.y;
+            float finalZ = rotateZ ? targetEuler.z : currentEuler.z;
+
+            // Apply the blended rotation
+            objectToAnimate.transform.rotation = Quaternion.Euler(finalX, finalY, finalZ);
         }
     }
 }

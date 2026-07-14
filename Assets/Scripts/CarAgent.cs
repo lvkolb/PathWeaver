@@ -205,12 +205,22 @@ public class CarAgent : MonoBehaviour
 
         foreach (RaycastHit hit in hits)
         {
+            // 1. Skip self
             if (hit.collider.transform.IsChildOf(this.transform) || hit.collider.transform == this.transform) continue;
 
-            // Check if the car is actually IN FRONT of us, not behind or to the side
+            // 2. Spatial check: Is the object physically in front of us?
             Vector3 toOther = hit.collider.transform.position - transform.position;
-            float dotProduct = Vector3.Dot(transform.forward, toOther.normalized);
-            if (dotProduct < 0.5f) continue;
+            float dotSpatial = Vector3.Dot(transform.forward, toOther.normalized);
+            if (dotSpatial < 0.5f) continue; // Skip if it's behind or too far to the side
+
+            // 3. Direction check: Is the other vehicle driving in the same general direction?
+            // We look at the other vehicle's forward vector compared to ours.
+            Vector3 otherForward = hit.collider.transform.forward;
+            float dotHeading = Vector3.Dot(transform.forward, otherForward);
+
+            // If dotHeading is less than 0.3, they are either oncoming (negative) 
+            // or perpendicular/crossing (near 0). We ignore oncoming traffic.
+            if (dotHeading < 0.3f) continue;
 
             if (hit.distance < closestValidDistance)
             {

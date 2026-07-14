@@ -158,8 +158,31 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
             NetworkObject netObj = spawnedNetworkObjects[i];
             if (netObj != null)
             {
-                if (Application.isPlaying) netObj.Despawn(true);
-                else DestroyImmediate(netObj.gameObject);
+                if (Application.isPlaying)
+                {
+                    // 1. SCHRITT: Nur über Netcode despawnen, wenn es wirklich aktiv gespawnt ist!
+                    if (netObj.IsSpawned)
+                    {
+                        if (netObj.IsSceneObject ?? false)
+                        {
+                            netObj.Despawn(false);
+                            netObj.gameObject.SetActive(false);
+                        }
+                        else
+                        {
+                            netObj.Despawn(true);
+                        }
+                    }
+                    else
+                    {
+                        // Fallback: Wenn es ungespawnt in der Liste war, einfach normal lokal zerstören
+                        Destroy(netObj.gameObject);
+                    }
+                }
+                else
+                {
+                    DestroyImmediate(netObj.gameObject);
+                }
             }
         }
 
@@ -221,9 +244,30 @@ public class RandomObjectSpawnerManager : NetworkBehaviour
             if (isTooCloseToSpline || isCollidingWithBuilding)
             {
                 if (Application.isPlaying)
-                    netObj.Despawn(true);
+                {
+                    // 1. SCHRITT: Nur despawnen, wenn es auf dem Netzwerk überhaupt aktiv gespawnt ist!
+                    if (netObj.IsSpawned)
+                    {
+                        if (netObj.IsSceneObject ?? false)
+                        {
+                            netObj.Despawn(false);
+                            netObj.gameObject.SetActive(false);
+                        }
+                        else
+                        {
+                            netObj.Despawn(true);
+                        }
+                    }
+                    else
+                    {
+                        // Fallback: Wenn es noch nicht auf dem Netzwerk war, einfach normal lokal zerstören
+                        Destroy(netObj.gameObject);
+                    }
+                }
                 else
+                {
                     DestroyImmediate(netObj.gameObject);
+                }
 
                 spawnedNetworkObjects.RemoveAt(i);
             }

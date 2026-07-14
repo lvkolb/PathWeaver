@@ -18,6 +18,7 @@ public class CarAgent : MonoBehaviour
     public float minStoppingDistance = 0.8f;
     public float sphereRadius = 0.5f; // How "fat" the detection ray is
     public LayerMask vehicleLayer;
+    public LayerMask jammerLayer;
     private float currentSpeed;
 
     [Header("References")]
@@ -197,8 +198,11 @@ public class CarAgent : MonoBehaviour
         // Elevate the ray so it shoots out of the windshield/grill, not the floor
         Vector3 rayOrigin = transform.position + (Vector3.up * 0.05f);
 
+        // COMBINE LAYERS: Search for both vehicles AND jammers in the same physical check
+        LayerMask combinedDetectionMask = vehicleLayer | jammerLayer;
+
         // Get EVERYTHING the sphere hits in front of the car
-        RaycastHit[] hits = Physics.SphereCastAll(rayOrigin, sphereRadius, transform.forward, detectionDistance, vehicleLayer);
+        RaycastHit[] hits = Physics.SphereCastAll(rayOrigin, sphereRadius, transform.forward, detectionDistance, combinedDetectionMask);
 
         float closestValidDistance = float.MaxValue;
         bool carDetectedInFront = false;
@@ -213,15 +217,22 @@ public class CarAgent : MonoBehaviour
             float dotSpatial = Vector3.Dot(transform.forward, toOther.normalized);
             if (dotSpatial < 0.5f) continue; // Skip if it's behind or too far to the side
 
-            // 3. Direction check: Is the other vehicle driving in the same general direction?
-            // We look at the other vehicle's forward vector compared to ours.
-            Vector3 otherForward = hit.collider.transform.forward;
-            float dotHeading = Vector3.Dot(transform.forward, otherForward);
+            // Check if the hit object is on the Jammer layer
+            bool isJammer = ((1 << hit.collider.gameObject.layer) & jammerLayer) != 0;
 
-            // If dotHeading is less than 0.3, they are either oncoming (negative) 
-            // or perpendicular/crossing (near 0). We ignore oncoming traffic.
-            if (dotHeading < 0.3f) continue;
+            // 3. Direction check (ONLY for other vehicles, Jammers always block!)
+            if (!isJammer)
+            {
+                // We look at the other vehicle's forward vector compared to ours.
+                Vector3 otherForward = hit.collider.transform.forward;
+                float dotHeading = Vector3.Dot(transform.forward, otherForward);
 
+                // If dotHeading is less than 0.3, they are either oncoming (negative) 
+                // or perpendicular/crossing (near 0). We ignore oncoming traffic.
+                if (dotHeading < 0.3f) continue;
+            }
+
+            // If we reach this point, it's either a Jammer in front of us, or a vehicle driving the same way
             if (hit.distance < closestValidDistance)
             {
                 closestValidDistance = hit.distance;

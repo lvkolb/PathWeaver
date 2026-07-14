@@ -287,6 +287,9 @@ MonoBehaviour:
   vehicleLayer:
     serializedVersion: 2
     m_Bits: 9216
+  jammerLayer:
+    serializedVersion: 2
+    m_Bits: 8192
   network: {fileID: 0}
   splineContainer: {fileID: 0}
   homeNode: {fileID: 0}
